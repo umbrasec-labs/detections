@@ -501,6 +501,80 @@ class HarnessTests(unittest.TestCase):
         self.assertNotIn("child==", text)
         self.assertIn("# Excluded (see requirements.in): child - never imported", text)
 
+    def test_16_lock_allow_young_waives_cooldown_for_one_exact_pin(self):
+        import datetime as dt
+        import io
+        from contextlib import redirect_stderr
+
+        from harness import lock
+
+        tmp = self.toy.tmp
+        young = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        meta = {
+            ("fix", "2.0"): {"info": {}, "urls": [{"upload_time_iso_8601": young, "filename": "fix-2.0.whl",
+                                                   "digests": {"sha256": "b" * 64}}]},
+            ("fix", "3.0"): {"info": {}, "urls": [{"upload_time_iso_8601": young, "filename": "fix-3.0.whl",
+                                                   "digests": {"sha256": "c" * 64}}]},
+        }
+
+        def run(requirements_in, cooldown=14):
+            (tmp / "requirements.in").write_text(requirements_in, encoding="utf-8")
+            out = tmp / "requirements.txt"
+            out.unlink(missing_ok=True)
+            err = io.StringIO()
+            real_fetch = lock.fetch
+            lock.fetch = lambda name, version: meta[(lock.canon(name), version)]
+            try:
+                with redirect_stderr(err):
+                    rc = lock.main(["--in", str(tmp / "requirements.in"), "--out", str(out),
+                                    "--cooldown-days", str(cooldown)])
+            finally:
+                lock.fetch = real_fetch
+            return rc, err.getvalue(), out.read_text(encoding="utf-8") if out.exists() else ""
+
+        waiver = f"# lock: allow-young fix==2.0 sha256:{'b' * 64} - GHSA-test\n"
+
+        rc, err, _ = run("fix==2.0\n")
+        self.assertEqual(rc, 1)
+        self.assertIn("every file must be at least 14 days old", err)
+
+        rc, err, text = run("fix==2.0\n" + waiver)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("fix==2.0", text)
+        self.assertIn("# Cooldown waived (see requirements.in): fix==2.0 - GHSA-test", text)
+
+        # A file added to the waived release later is not covered: only the listed digests are.
+        meta[("fix", "2.0")]["urls"].append({"upload_time_iso_8601": young, "filename": "fix-2.0-late.whl",
+                                              "digests": {"sha256": "d" * 64}})
+        rc, err, text = run("fix==2.0\n" + waiver)
+        self.assertEqual(rc, 1)
+        self.assertIn("fix-2.0-late.whl", err)
+        self.assertIn("not listed in the allow-young waiver", err)
+        self.assertNotIn("fix-2.0.whl ", err)
+        self.assertEqual(text, "")
+        meta[("fix", "2.0")]["urls"].pop()
+
+        # A waiver line without digests is not a waiver at all.
+        rc, err, _ = run("fix==2.0\n# lock: allow-young fix==2.0 - GHSA-test\n")
+        self.assertEqual(rc, 1)
+        self.assertIn("every file must be at least 14 days old", err)
+
+        # The waiver names one exact version; it does not carry over to a later bump.
+        rc, err, text = run("fix==3.0\n" + waiver)
+        self.assertEqual(rc, 1)
+        self.assertIn("allow-young fix==2.0: the pin is fix==3.0", err)
+        self.assertIn("every file must be at least 14 days old", err)
+        self.assertEqual(text, "")
+
+        # Once the release clears the cooldown, the stale waiver fails the lock until removed.
+        rc, err, _ = run("fix==2.0\n" + waiver, cooldown=2)
+        self.assertEqual(rc, 1)
+        self.assertIn("remove the line from requirements.in", err)
+
+        rc, err, _ = run("other==1.0\n" + waiver.replace("fix", "gone"), cooldown=2)
+        self.assertEqual(rc, 1)
+        self.assertIn("allow-young gone==2.0: gone is not pinned", err)
+
 
 if __name__ == "__main__":
     unittest.main()

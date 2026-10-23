@@ -13,3 +13,10 @@ PyYAML==6.0.3
 # advisory on pickle-based cache reads; leaving it out removes that code entirely.
 # lock: exclude diskcache - only used by pySigma's MITRE data cache, which the harness never imports
 # lock: exclude diskcache-stubs - type stubs for diskcache, unused at runtime
+
+# certifi 2026.10.19 removes the emSign root CA whose intermediate CA keys were compromised
+# (GHSA-6q48-6c7w-9gw2, critical). It is younger than the 14-day cooldown, and a CA distrust
+# cannot wait. The waiver covers only the wheel and sdist hashed below, so a file added to the
+# release later still has to clear the cooldown. Remove the line once the release is 14 days
+# old; the lock fails until you do.
+# lock: allow-young certifi==2026.10.19 sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae,42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b - GHSA-6q48-6c7w-9gw2 (compromised emSign intermediate CA keys)
