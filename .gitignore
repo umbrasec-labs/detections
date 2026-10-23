@@ -1,0 +1,5 @@
+out/
+_upstream/
+.venv/
+__pycache__/
+node_modules/
