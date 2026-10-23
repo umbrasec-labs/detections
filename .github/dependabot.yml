@@ -1,0 +1,32 @@
+# Version updates follow the same 14-day release cooldown that harness.lock enforces, so
+# Dependabot only proposes releases the lock policy would accept. Security updates are not
+# delayed by the cooldown.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 14
+    groups:
+      pip:
+        patterns: ['*']
+    commit-message:
+      prefix: deps
+
+  # Every action is pinned to a commit SHA with its version in a comment; Dependabot
+  # updates both together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 14
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci

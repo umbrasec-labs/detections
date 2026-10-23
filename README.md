@@ -98,6 +98,8 @@ docs/verify.md                outsider verification and reproduction
 
 `requirements.txt` pins the full dependency set with a hash for every file PyPI publishes. `python -m harness.lock` regenerates it and refuses a pin if any of its files was uploaded less than 14 days ago.
 
+Dependabot (`.github/dependabot.yml`) proposes pip and GitHub Actions updates weekly, grouped into one PR each, with the same 14-day cooldown. Its pip PRs edit `requirements.txt` directly. CI installs with `--require-hashes` and re-proves every claim, so merge one only when CI is green. Security updates skip the cooldown.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
