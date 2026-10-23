@@ -6,3 +6,10 @@
 pySigma==1.5.1
 pySigma-backend-sqlite==2.0.0
 PyYAML==6.0.3
+
+# pySigma requires diskcache only for sigma.data.mitre_attack and sigma.data.mitre_d3fend,
+# which cache downloaded MITRE data. The harness never imports them (self-test 14 checks
+# this), so the package is not installed at all. diskcache 5.6.3 has an unpatched
+# advisory on pickle-based cache reads; leaving it out removes that code entirely.
+# lock: exclude diskcache - only used by pySigma's MITRE data cache, which the harness never imports
+# lock: exclude diskcache-stubs - type stubs for diskcache, unused at runtime

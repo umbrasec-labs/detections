@@ -2,6 +2,8 @@
 # Do not edit by hand. Every pin carries a hash for every file PyPI publishes for it
 # (all wheels and the sdist), so one lock installs on any interpreter and platform.
 # Install: python -m pip install --require-hashes --no-deps -r requirements.txt
+# Excluded (see requirements.in): diskcache - only used by pySigma's MITRE data cache, which the harness never imports
+# Excluded (see requirements.in): diskcache-stubs - type stubs for diskcache, unused at runtime
 certifi==2026.7.22 \
     --hash=sha256:62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775 \
     --hash=sha256:741e2c3b351ddf169a738da9f2c048608ff7f2c5cc02f1ebc6b118bb090d5d55
@@ -178,12 +180,6 @@ charset-normalizer==3.5.2 \
     --hash=sha256:fcff63213e8e6e47770541a4607175404f47cbb3ebea7b6058cc82d524a0e424 \
     --hash=sha256:fd1fbe0f116b6e55da77aca2c6ddcddcfac2186cbf78bdebf40fc156efca389d \
     --hash=sha256:fe9753dfee015c570d73df76f899f18444d41388bffcde097deba51c4fadbb9f
-diskcache==5.6.3 \
-    --hash=sha256:2c3a3fa2743d8535d832ec61c2054a1641f41775aa7c556758a109941e33e4fc \
-    --hash=sha256:5e31b2d5fbad117cc363ebaf6b689474db18a1f6438bc82358b024abd4c2ca19
-diskcache-stubs==5.6.3.6.20240818 \
-    --hash=sha256:b6eb43899e906b3167a20ac09a9a226f30267a306a96542ea720ebbfc3282796 \
-    --hash=sha256:e1db90940b344140730976abe79f57f5b43ca296cbb43fa95da0c69b12d5de4f
 idna==3.20 \
     --hash=sha256:a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44 \
     --hash=sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c
