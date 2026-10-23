@@ -1,7 +1,7 @@
 schema: umbrasec.claims/v1
 rule: rules/windows/kerberoasting-spn-fanout.yml
 rule_id: 1c9d4b77-2e55-4f01-bb3a-6d8e9f0a1b22
-rule_sha256: 5b69404fe385b1a6968a57b9bfa82f478fa3c239afa0a5d9f6b0c988ef8760ac
+rule_sha256: 3b9045013ab0033813b87caffc70bd24ea6bd0ae223168db8baba827ecb5a665
 engine: sigma
 writeup: research/detecting-kerberoasting.html
 reviewed: 2026-10-23
@@ -23,6 +23,24 @@ claims:
     expect: match
     generate: {count: 16, start: "2026-10-23T10:00:00Z", step_seconds: 20,
                template: {_note: "two sliding windows reach 15, so the query returns two rows", EventID: 4769, Status: "0x0", TargetUserName: carol, ServiceName: "HTTP/app{i:02d}"}}
+  - id: false-positive/vulnerability-scanner
+    kind: false-positive
+    quote: {source: rule, text: "Vulnerability scanners and monitoring accounts that request tickets for many services in a burst"}
+    expect: match
+    generate: {count: 15, start: "2026-10-23T10:00:00Z", step_seconds: 2,
+               template: {_note: "a scanner service account touches 15 services in 30 seconds", EventID: 4769, Status: "0x0", TargetUserName: svc-vulnscan, ServiceName: "HTTP/host{i:02d}"}}
+  - id: false-positive/monitoring-account
+    kind: false-positive
+    quote: {source: rule, text: "Vulnerability scanners and monitoring accounts that request tickets for many services in a burst"}
+    expect: match
+    generate: {count: 20, start: "2026-10-23T10:00:00Z", step_seconds: 10,
+               template: {_note: "a monitoring account polls 20 services within 200 seconds", EventID: 4769, Status: "0x0", TargetUserName: svc-monitor, ServiceName: "MSSQLSvc/db{i:02d}"}}
+  - id: false-positive/busy-legitimate-account
+    kind: false-positive
+    quote: {source: rule, text: "Busy legitimate accounts above the default threshold"}
+    expect: match
+    generate: {count: 18, start: "2026-10-23T10:00:00Z", step_seconds: 15,
+               template: {_note: "a reporting account reaches 18 distinct services within 5 minutes, above the default gte 15", EventID: 4769, Status: "0x0", TargetUserName: svc-reporting, ServiceName: "HTTP/report{i:02d}"}}
   - id: near-miss/fourteen-spns
     kind: near-miss
     rationale: "One below the gte 15 threshold"

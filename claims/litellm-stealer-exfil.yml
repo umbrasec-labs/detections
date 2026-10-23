@@ -1,7 +1,7 @@
 schema: umbrasec.claims/v1
 rule: rules/web/litellm-stealer-exfil.yml
 rule_id: 6f6f10d8-c46a-46dc-89ad-c5b9a800ee72
-rule_sha256: 4a865aefc3aa9b108d2ec9e5c195adea16e39cac3ea51fa57c4b9c059427775d
+rule_sha256: 65e9502df72c09ad539304ad756eb41a324c5a7cdb7332c16b5fa20cc454bea7
 engine: sigma
 writeup: null
 reviewed: 2026-10-23
@@ -33,11 +33,34 @@ claims:
       - {_note: "endswith is case-insensitive", cs-host: WWW.LiteLLM.Dev}
   - id: catches/uri-fallback
     kind: catches
-    quote: {source: rule, text: "The URI selection is a fallback for proxies that log the host with a port or only log the full URL."}
+    quote: {source: rule, text: "The URI selection covers proxies that only log the full URL."}
     expect: match
     events:
-      - {_note: "host logged with a port, full URL in c-uri", cs-host: "www.litellm.dev:80", c-uri: "http://www.litellm.dev/healthcheck"}
       - {_note: "only the full URL is logged", c-uri: "http://litellm.dev/healthcheck"}
+      - {_note: "only the full URL is logged, www host", c-uri: "http://www.litellm.dev/healthcheck"}
+  - id: catches/host-with-port
+    kind: catches
+    quote: {source: rule, text: "Hosts logged with a port or with a trailing dot are matched."}
+    expect: match
+    events:
+      - {_note: "apex host logged with a port, no c-uri", cs-host: "litellm.dev:443"}
+      - {_note: "apex host with a port, mixed case", cs-host: "LiteLLM.dev:80"}
+  - id: catches/subdomain-with-port
+    kind: catches
+    quote: {source: rule, text: "Hosts logged with a port or with a trailing dot are matched."}
+    expect: match
+    events:
+      - {_note: "www host logged with a port, no c-uri", cs-host: "www.litellm.dev:443"}
+      - {_note: "www host with port 80, no c-uri", cs-host: "www.litellm.dev:80"}
+  - id: catches/trailing-dot-host
+    kind: catches
+    quote: {source: rule, text: "Hosts logged with a port or with a trailing dot are matched."}
+    expect: match
+    events:
+      - {_note: "fully qualified apex host with a trailing dot", cs-host: "litellm.dev."}
+      - {_note: "fully qualified www host with a trailing dot", cs-host: "www.litellm.dev."}
+      - {_note: "trailing dot and a port on the apex host", cs-host: "litellm.dev.:443"}
+      - {_note: "trailing dot and a port on the www host", cs-host: "www.litellm.dev.:443"}
   - id: false-positive/analyst-sandbox
     kind: false-positive
     quote: {source: rule, text: "Analysts or sandboxes deliberately resolving or fetching the indicator"}
@@ -52,3 +75,15 @@ claims:
       - {cs-host: litellm.ai}
       - {cs-host: docs.litellm.ai}
       - {cs-host: notlitellm.dev}
+  - id: near-miss/lookalike-name-with-port
+    kind: near-miss
+    rationale: "The port selections anchor on the start of the host or on a leading dot, so a name that only ends in litellm.dev stays quiet with a port too"
+    expect: no-match
+    events:
+      - {cs-host: "notlitellm.dev:443"}
+  - id: near-miss/litellm-dev-as-a-label-prefix
+    kind: near-miss
+    rationale: "litellm.dev followed by more labels is a different domain; no host selection matches it"
+    expect: no-match
+    events:
+      - {cs-host: litellm.dev.evil.example}
