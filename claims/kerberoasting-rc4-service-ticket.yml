@@ -1,0 +1,72 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/kerberoasting-rc4-service-ticket.yml
+rule_id: 8f1e2c33-6a4b-4d9e-9a1f-2b7c0d5e4a10
+rule_sha256: 9da525810940fd5e697b1066866e4b27b223970da6c28a3b9102a33cb987b654
+engine: sigma
+writeup: research/detecting-kerberoasting.html
+reviewed: 2026-10-23
+event_defaults:
+  # A successfully issued RC4 service ticket with the flags the rule pins.
+  _synthetic: true
+  EventID: 4769
+  TicketEncryptionType: "0x17"
+  TicketOptions: "0x40810000"
+  Status: "0x0"
+  TargetUserName: alice
+fp_dispositions: []
+claims:
+  - id: catches/rc4-service-ticket
+    kind: catches
+    quote: {source: rule, text: "A Kerberos TGS (Event 4769) was issued using RC4-HMAC encryption."}
+    expect: match
+    events:
+      - {_note: "RC4 ticket for a user service account", ServiceName: svc-sql}
+  - id: false-positive/legacy-appliance
+    kind: false-positive
+    quote: {source: rule, text: "Legacy applications or appliances that genuinely require RC4"}
+    expect: match
+    events:
+      - {_note: "a legacy appliance's service account; the event is identical to a roast, which is the point", ServiceName: svc-legacy-nas}
+  - id: false-positive/non-windows-client
+    kind: false-positive
+    quote: {source: rule, text: "Some Linux/macOS or third-party Kerberos clients"}
+    expect: match
+    events:
+      - {_note: "a third-party Kerberos client that negotiates RC4", ServiceName: svc-web, TargetUserName: build-mac01}
+  - id: false-positive/rc4-only-account
+    kind: false-positive
+    quote: {source: rule, text: "Accounts whose msDS-SupportedEncryptionTypes still allow only RC4"}
+    expect: match
+    events:
+      - {_note: "a service account whose supported encryption types allow only RC4", ServiceName: svc-oldreports}
+  - id: excluded/failed-request
+    kind: excluded
+    quote: {source: rule, text: "only count successfully issued tickets"}
+    expect: no-match
+    events:
+      - {_note: "the KDC refused the request (Status 0x1F)", ServiceName: svc-sql, Status: "0x1F"}
+  - id: near-miss/aes-ticket
+    kind: near-miss
+    rationale: "AES-256 (0x12) is the expected encryption type in an AES-capable domain"
+    expect: no-match
+    events:
+      - {ServiceName: svc-sql, TicketEncryptionType: "0x12"}
+  - id: near-miss/machine-account
+    kind: near-miss
+    rationale: "Service names ending in $ are computer accounts, removed by filter_machine"
+    expect: no-match
+    events:
+      - {ServiceName: WEB01$}
+  - id: near-miss/krbtgt
+    kind: near-miss
+    rationale: "krbtgt is removed by filter_krbtgt, and equality is case-insensitive"
+    expect: no-match
+    events:
+      - {ServiceName: krbtgt}
+      - {_note: "upper case still filtered", ServiceName: KRBTGT}
+  - id: blind-spot/ticket-options-vary
+    kind: blind-spot
+    quote: {source: writeup, text: "The TicketOptions: '0x40810000' line tightens precision but will miss tools that vary their flags."}
+    expect: no-match
+    events:
+      - {_note: "an RC4 ticket with different option flags", ServiceName: svc-sql, TicketOptions: "0x40800000"}

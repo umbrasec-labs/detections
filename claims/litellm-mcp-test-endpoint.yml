@@ -1,0 +1,49 @@
+schema: umbrasec.claims/v1
+rule: rules/web/litellm-mcp-test-endpoint.yml
+rule_id: 2c8e5b41-6d77-4a90-bb1e-3f0a9c2d4e56
+rule_sha256: 372a162b6bf745fbac6d090b377634d0aaaec8c38514cf11354d6ae2757b5ccb
+engine: sigma
+writeup: research/detecting-litellm-command-injection.html
+reviewed: 2026-10-23
+event_defaults:
+  _synthetic: true
+  cs-method: POST
+fp_dispositions: []
+claims:
+  - id: catches/both-preview-endpoints
+    kind: catches
+    quote: {source: rule, text: "A request hit one of LiteLLM's MCP preview endpoints."}
+    expect: match
+    events:
+      - {_note: "connection preview", cs-uri-stem: /mcp-rest/test/connection}
+      - {_note: "tools/list preview", cs-uri-stem: /mcp-rest/test/tools/list}
+  - id: catches/lower-case-method
+    kind: catches
+    quote: {source: rule, text: "They are an admin-only preview feature, so requests - especially from untrusted sources - warrant review."}
+    expect: match
+    events:
+      - {_note: "method logged in lower case; equality is case-insensitive", cs-method: post, cs-uri-stem: /mcp-rest/test/connection}
+  - id: false-positive/admin-preview
+    kind: false-positive
+    quote: {source: rule, text: "An administrator legitimately previewing an MCP server in the LiteLLM UI"}
+    expect: match
+    events:
+      - {_note: "an admin previews a server from the UI; same request shape", cs-uri-stem: /mcp-rest/test/tools/list}
+  - id: false-positive/scanner
+    kind: false-positive
+    quote: {source: rule, text: "Vulnerability scanners probing the path after public disclosure"}
+    expect: match
+    events:
+      - {_note: "a scanner probing the path", cs-uri-stem: /mcp-rest/test/connection}
+  - id: near-miss/get-request
+    kind: near-miss
+    rationale: "The rule requires POST"
+    expect: no-match
+    events:
+      - {cs-method: GET, cs-uri-stem: /mcp-rest/test/connection}
+  - id: near-miss/other-mcp-rest-path
+    kind: near-miss
+    rationale: "Only the two test paths are preview endpoints"
+    expect: no-match
+    events:
+      - {cs-uri-stem: /mcp-rest/tools/list}

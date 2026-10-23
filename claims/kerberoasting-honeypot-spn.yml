@@ -1,0 +1,44 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/kerberoasting-honeypot-spn.yml
+rule_id: 3e1f6d99-4a77-4123-dd5c-8f0a1b2c3d44
+rule_sha256: f1a5e3bfe05c760ce51bee90af323c4d658807d43b494011a1df1cac45b645fc
+engine: sigma
+writeup: research/detecting-kerberoasting.html
+reviewed: 2026-10-23
+event_defaults:
+  _synthetic: true
+  EventID: 4769
+  TargetUserName: alice
+fp_dispositions: []
+claims:
+  - id: catches/decoy-ticket
+    kind: catches
+    quote: {source: rule, text: "decoy service account that no legitimate workload uses"}
+    expect: match
+    events:
+      - {_note: "a ticket request for the decoy", ServiceName: svc-honeypot-sql}
+  - id: catches/decoy-upper-case
+    kind: catches
+    quote: {source: rule, text: "Any hit is high-confidence evidence of SPN enumeration / Kerberoasting."}
+    expect: match
+    events:
+      - {_note: "equality is case-insensitive under Sigma semantics", ServiceName: SVC-HONEYPOT-SQL}
+  - id: catches/template-placeholder
+    kind: catches
+    quote: {source: rule, text: "your decoy sAMAccountName"}
+    expect: match
+    events:
+      - {_note: "the shipped placeholder name is the live value; replace it with your own decoy before deploying", ServiceName: svc-honeypot-sql}
+  - id: false-positive/misconfigured-scanner
+    kind: false-positive
+    quote: {source: rule, text: "A misconfigured scanner that was pointed at the decoy"}
+    expect: match
+    events:
+      - {_note: "an inventory scanner's account requests the decoy ticket", ServiceName: svc-honeypot-sql, TargetUserName: svc-scanner}
+  - id: near-miss/other-service
+    kind: near-miss
+    rationale: "The rule matches the decoy name exactly; other and similar names do not match"
+    expect: no-match
+    events:
+      - {ServiceName: svc-sql}
+      - {_note: "a longer name that starts with the decoy name", ServiceName: svc-honeypot-sql2}

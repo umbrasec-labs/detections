@@ -1,0 +1,22 @@
+schema: umbrasec.claims-writeup/v1
+writeup: research/mathspace-metabase-internal-tooling.html
+section: Honest limitations
+sentences:
+  - starts: "We have no visibility into the intrusion beyond what has been published"
+    disposition: context
+    reason: "A sourcing statement about the incident; nothing to execute"
+  - starts: "The initial access vector is stated by the affected organisation"
+    disposition: context
+    reason: "A sourcing statement about the incident; nothing to execute"
+  - starts: "We have not tested the exploit"
+    disposition: context
+    reason: "A sourcing statement; the claims here use synthetic marker events, never exploit details"
+  - starts: "The Sigma rule is experimental and has not been validated against a real exploitation attempt"
+    disposition: context
+    reason: "Rule status and tuning advice; the false-positive notes it points to are proved by the rule's false-positive claims"
+  - starts: "On the Essential Eight timeframes"
+    disposition: context
+    reason: "Policy advice unrelated to the rule logic; nothing to execute"
+  - starts: "The argument in this article does not depend on the specific figure."
+    disposition: context
+    reason: "Policy advice unrelated to the rule logic; nothing to execute"

@@ -1,0 +1,48 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/cloudflared-tunnel-service-install.yml
+rule_id: bf3f2f8a-f904-4978-9ff1-6dc3c79a2afb
+rule_sha256: 5c03f8694d1df2f7faae9b6fba88a864437f4d10ec421df56db261db9739f6c1
+engine: sigma
+writeup: research/n-able-ncentral-msp-supply-chain.html
+reviewed: 2026-10-23
+event_defaults:
+  _synthetic: true
+  EventID: 7045
+fp_dispositions: []
+claims:
+  - id: catches/service-named-cloudflared
+    kind: catches
+    quote: {source: rule, text: "a service named Cloudflared was registered on managed endpoints"}
+    expect: match
+    events:
+      - {_note: "service name only, in the mixed case the intrusions used", ServiceName: Cloudflared}
+  - id: catches/renamed-service-image-path
+    kind: catches
+    quote: {source: rule, text: "A Windows service was created for cloudflared, the Cloudflare Tunnel client."}
+    expect: match
+    events:
+      - {_note: "an innocuous service name; the binary path gives it away", ServiceName: WinUpdateHelper, ImagePath: 'C:\ProgramData\helper\cloudflared.exe'}
+  - id: false-positive/sanctioned-deployment
+    kind: false-positive
+    quote: {source: rule, text: "Cloudflare Tunnel is legitimate dual-use software. If your organisation deploys it deliberately"}
+    expect: match
+    events:
+      - {_note: "the organisation's own install from the standard path", ServiceName: Cloudflared, ImagePath: 'C:\Program Files (x86)\cloudflared\cloudflared.exe'}
+  - id: false-positive/msp-remote-support
+    kind: false-positive
+    quote: {source: rule, text: "A sanctioned vendor or MSP deploying Cloudflare Tunnel for remote support"}
+    expect: match
+    events:
+      - {_note: "an MSP's sanctioned support tunnel", ServiceName: ExampleMSP-Tunnel, ImagePath: 'C:\Program Files\ExampleMSP\cloudflared.exe'}
+  - id: near-miss/other-service
+    kind: near-miss
+    rationale: "A new service with no cloudflared in its name or path"
+    expect: no-match
+    events:
+      - {ServiceName: ExampleUpdater, ImagePath: 'C:\Program Files\Example\updater.exe'}
+  - id: near-miss/security-log-4697
+    kind: near-miss
+    rationale: "The rule reads System event 7045 only; the Security log's 4697 for the same install is out of scope"
+    expect: no-match
+    events:
+      - {EventID: 4697, ServiceName: Cloudflared, ImagePath: 'C:\ProgramData\helper\cloudflared.exe'}

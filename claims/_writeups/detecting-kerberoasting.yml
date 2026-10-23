@@ -1,0 +1,24 @@
+schema: umbrasec.claims-writeup/v1
+writeup: research/detecting-kerberoasting.html
+section: Honest limitations
+sentences:
+  - starts: 'A "low and slow" attacker who requests a single high-value ticket'
+    disposition: tested
+    claims:
+      - kerberoasting-spn-fanout/blind-spot/low-and-slow-single-ticket
+      - kerberoasting-spn-fanout/blind-spot/fifteen-spns-over-7m30s
+  - starts: "That's not a reason to skip these"
+    disposition: context
+    reason: "Explains why the three rules are layered; nothing to execute"
+  - starts: "Layer all three"
+    disposition: context
+    reason: "Deployment advice; nothing to execute"
+  - starts: "These rules are written to be readable and tunable"
+    disposition: context
+    reason: "States the intent of the rules; nothing to execute"
+  - starts: "Test them in report-only mode"
+    disposition: context
+    reason: "Rollout advice; nothing to execute"
+  - starts: "If one misbehaves for you"
+    disposition: context
+    reason: "An invitation to file issues; nothing to execute"

@@ -1,0 +1,25 @@
+schema: umbrasec.claims-writeup/v1
+writeup: research/n-able-ncentral-msp-supply-chain.html
+section: Honest limitations
+sentences:
+  - starts: "This is not a mechanism writeup."
+    disposition: context
+    reason: "Scope of the article; nothing to execute"
+  - starts: "The code-level root cause is undisclosed"
+    disposition: context
+    reason: "A sourcing statement about the vulnerability; nothing to execute"
+  - starts: "We have reproduced none of it"
+    disposition: context
+    reason: "A sourcing statement about the intrusion; nothing to execute"
+  - starts: "The Take Control Event IDs are from secondary reporting"
+    disposition: context
+    reason: "A sourcing statement about indicators that no rule in the pack matches"
+  - starts: "We publish no IOC list deliberately"
+    disposition: context
+    reason: "A sourcing statement; nothing to execute"
+  - starts: "Both rules are experimental: CI-validated, not run at scale."
+    disposition: context
+    reason: "Rule status; the claims for cloudflared-tunnel-service-install and masquerading-svchost-outside-system32 add synthetic evidence, not field evidence"
+  - starts: "Attribution is not addressed"
+    disposition: context
+    reason: "Scope of the article; nothing to execute"
