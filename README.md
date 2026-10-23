@@ -100,6 +100,8 @@ docs/verify.md                outsider verification and reproduction
 
 A `# lock: exclude NAME - REASON` line in `requirements.in` leaves a dependency out of the lock. CI then never installs it. pySigma requires `diskcache`, which has an advisory with no patched release, but only pySigma's MITRE data cache uses it, and the harness never loads that cache. It is excluded, and self-test 14 blocks the import and runs the harness, so any code path that starts needing it fails CI.
 
+A `# lock: allow-young NAME==VERSION sha256:HASH,... - REASON` line waives the cooldown for the listed files of that one exact pin, for a security fix that cannot wait 14 days. A file added to the release later is not covered and still has to clear the cooldown. The lock fails if the pin moves to another version, and again once the release is 14 days old, so the line has to be removed rather than lingering. `certifi==2026.10.19` uses it for GHSA-6q48-6c7w-9gw2, which removes a compromised emSign root CA. The harness itself makes no TLS connections; certifi is installed only because `requests` declares it.
+
 Dependabot (`.github/dependabot.yml`) proposes pip and GitHub Actions updates weekly, grouped into one PR each, with the same 14-day cooldown. Its pip PRs edit `requirements.txt` directly. CI installs with `--require-hashes` and re-proves every claim, so merge one only when CI is green. Security updates skip the cooldown.
 
 ## License
