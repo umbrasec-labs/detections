@@ -457,6 +457,50 @@ class HarnessTests(unittest.TestCase):
         second.pop("generated_at")
         self.assertEqual(first, second)
 
+    def test_14_harness_never_imports_excluded_dependencies(self):
+        # requirements.in excludes diskcache from the lock, so CI never installs it. Block the
+        # import outright and run the harness: a code path that needs it must fail here first.
+        blocker = (
+            "import sys, runpy\n"
+            "class Block:\n"
+            "    def find_spec(self, name, path=None, target=None):\n"
+            "        if name.split('.')[0] in ('diskcache',):\n"
+            "            raise ImportError(f'{name} is excluded from requirements.txt')\n"
+            "sys.meta_path.insert(0, Block())\n"
+            "sys.argv = ['harness.run'] + sys.argv[1:]\n"
+            "runpy.run_module('harness.run', run_name='__main__')\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", blocker, "--upstream", str(self.toy.upstream), "--claims", str(self.toy.claims_dir),
+             "--out", str(self.toy.out)],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertTrue((self.toy.out / "claims.json").is_file())
+
+    def test_15_lock_excludes_named_dependency(self):
+        from harness import lock
+
+        tmp = self.toy.tmp
+        (tmp / "requirements.in").write_text(
+            "parent==1.0\n# lock: exclude child - never imported\n", encoding="utf-8")
+        old = "2020-01-01T00:00:00Z"
+        meta = {
+            "parent": {"info": {"requires_dist": ["child>=1", "other; extra == 'x'"]},
+                       "urls": [{"upload_time_iso_8601": old, "filename": "parent.whl", "digests": {"sha256": "a" * 64}}]},
+        }
+        real_fetch = lock.fetch
+        lock.fetch = lambda name, version: meta[lock.canon(name)]
+        try:
+            rc = lock.main(["--in", str(tmp / "requirements.in"), "--out", str(tmp / "requirements.txt")])
+        finally:
+            lock.fetch = real_fetch
+        self.assertEqual(rc, 0)
+        text = (tmp / "requirements.txt").read_text(encoding="utf-8")
+        self.assertIn("parent==1.0", text)
+        self.assertNotIn("child==", text)
+        self.assertIn("# Excluded (see requirements.in): child - never imported", text)
+
 
 if __name__ == "__main__":
     unittest.main()

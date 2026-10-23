@@ -9,6 +9,12 @@ Pins come from requirements.in (direct) and the current requirements.txt
 - a pin, or one of its files, is yanked;
 - a pin needs a dependency that is not pinned (extras are ignored).
 
+requirements.in may exclude a transitive dependency with a comment line
+`# lock: exclude NAME - REASON`. An excluded package is left out of the lock
+and skipped by the dependency check, so `pip install --no-deps` never
+installs it. Use this only for code the harness provably never imports, and
+say why in REASON; the lock header lists every exclusion.
+
 Stdlib only, so it runs before anything is installed.
 """
 
@@ -25,6 +31,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PIN_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;\\#]+)")
 REQ_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+EXCLUDE_RE = re.compile(r"^\s*#\s*lock:\s*exclude\s+([A-Za-z0-9][A-Za-z0-9._-]*)\s+-\s+(\S.*?)\s*$")
 
 
 def canon(name: str) -> str:
@@ -40,6 +47,18 @@ def read_pins(path: Path) -> dict[str, tuple[str, str]]:
         if m:
             pins[canon(m.group(1))] = (m.group(1), m.group(2))
     return pins
+
+
+def read_excludes(path: Path) -> dict[str, tuple[str, str]]:
+    """`# lock: exclude NAME - REASON` lines, keyed by canonical name."""
+    excludes: dict[str, tuple[str, str]] = {}
+    if not path.exists():
+        return excludes
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = EXCLUDE_RE.match(line)
+        if m:
+            excludes[canon(m.group(1))] = (m.group(1), m.group(2))
+    return excludes
 
 
 def fetch(name: str, version: str) -> dict:
@@ -68,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=str(ROOT / "requirements.txt"))
     args = ap.parse_args(argv)
 
+    excludes = read_excludes(Path(args.infile))
     pins = read_pins(Path(args.out))
     pins.update(read_pins(Path(args.infile)))
     for p in args.pin:
@@ -75,6 +95,8 @@ def main(argv: list[str] | None = None) -> int:
         if not m:
             ap.error(f"--pin must be NAME==VERSION, got {p!r}")
         pins[canon(m.group(1))] = (m.group(1), m.group(2))
+    for key in excludes:
+        pins.pop(key, None)
     if not pins:
         ap.error("no pins found")
 
@@ -112,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
         blocks.append("\n".join(lines))
 
     for key, deps in sorted(needed.items()):
-        for dep in sorted(deps - set(pins)):
+        for dep in sorted(deps - set(pins) - set(excludes)):
             problems.append(f"{pins[key][0]} needs {dep}, which is not pinned; add --pin {dep}==<version>")
 
     if problems:
@@ -127,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
         "# (all wheels and the sdist), so one lock installs on any interpreter and platform.\n"
         "# Install: python -m pip install --require-hashes --no-deps -r requirements.txt\n"
     )
+    for _, (name, reason) in sorted(excludes.items()):
+        header += f"# Excluded (see requirements.in): {name} - {reason}\n"
     Path(args.out).write_text(header + "\n".join(blocks) + "\n", encoding="utf-8")
     print(f"lock: wrote {len(blocks)} pins to {args.out}")
     return 0

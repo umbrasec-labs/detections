@@ -98,6 +98,8 @@ docs/verify.md                outsider verification and reproduction
 
 `requirements.txt` pins the full dependency set with a hash for every file PyPI publishes. `python -m harness.lock` regenerates it and refuses a pin if any of its files was uploaded less than 14 days ago.
 
+A `# lock: exclude NAME - REASON` line in `requirements.in` leaves a dependency out of the lock. CI then never installs it. pySigma requires `diskcache`, which has an advisory with no patched release, but only pySigma's MITRE data cache uses it, and the harness never loads that cache. It is excluded, and self-test 14 blocks the import and runs the harness, so any code path that starts needing it fails CI.
+
 Dependabot (`.github/dependabot.yml`) proposes pip and GitHub Actions updates weekly, grouped into one PR each, with the same 14-day cooldown. Its pip PRs edit `requirements.txt` directly. CI installs with `--require-hashes` and re-proves every claim, so merge one only when CI is green. Security updates skip the cooldown.
 
 ## License
