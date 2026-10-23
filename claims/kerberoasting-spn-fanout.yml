@@ -1,0 +1,61 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/kerberoasting-spn-fanout.yml
+rule_id: 1c9d4b77-2e55-4f01-bb3a-6d8e9f0a1b22
+rule_sha256: 5b69404fe385b1a6968a57b9bfa82f478fa3c239afa0a5d9f6b0c988ef8760ac
+engine: sigma
+writeup: research/detecting-kerberoasting.html
+reviewed: 2026-10-23
+# The rule is a value_count correlation, so every claim runs in sequence mode:
+# all events go into one table and expect applies to the set.
+event_defaults:
+  _synthetic: true
+fp_dispositions: []
+claims:
+  - id: catches/fifteen-spns-in-150s
+    kind: catches
+    quote: {source: rule, text: "requested Kerberos service tickets (4769) for an unusually large number of distinct service principals in a short window"}
+    expect: match
+    generate: {count: 15, start: "2026-10-23T10:00:00Z", step_seconds: 10,
+               template: {EventID: 4769, Status: "0x0", TargetUserName: alice, ServiceName: "MSSQLSvc/sql{i:02d}"}}
+  - id: catches/sixteen-spns-in-300s
+    kind: catches
+    quote: {source: rule, text: "consistent with bulk Kerberoasting enumeration"}
+    expect: match
+    generate: {count: 16, start: "2026-10-23T10:00:00Z", step_seconds: 20,
+               template: {_note: "two sliding windows reach 15, so the query returns two rows", EventID: 4769, Status: "0x0", TargetUserName: carol, ServiceName: "HTTP/app{i:02d}"}}
+  - id: near-miss/fourteen-spns
+    kind: near-miss
+    rationale: "One below the gte 15 threshold"
+    expect: no-match
+    generate: {count: 14, start: "2026-10-23T10:00:00Z", step_seconds: 1,
+               template: {EventID: 4769, Status: "0x0", TargetUserName: alice, ServiceName: "MSSQLSvc/sql{i:02d}"}}
+  - id: near-miss/same-spn-fifteen-times
+    kind: near-miss
+    rationale: "The rule counts distinct ServiceName values, not requests"
+    expect: no-match
+    generate: {count: 15, start: "2026-10-23T10:00:00Z", step_seconds: 1,
+               template: {EventID: 4769, Status: "0x0", TargetUserName: alice, ServiceName: "MSSQLSvc/sql01"}}
+  - id: near-miss/machine-account
+    kind: near-miss
+    rationale: "Requesters ending in $ are computer accounts, removed by the base rule's filter_machine"
+    expect: no-match
+    generate: {count: 15, start: "2026-10-23T10:00:00Z", step_seconds: 1,
+               template: {EventID: 4769, Status: "0x0", TargetUserName: HOST$, ServiceName: "MSSQLSvc/sql{i:02d}"}}
+  - id: near-miss/failed-requests
+    kind: near-miss
+    rationale: "The base rule counts only issued tickets (Status 0x0)"
+    expect: no-match
+    generate: {count: 15, start: "2026-10-23T10:00:00Z", step_seconds: 1,
+               template: {EventID: 4769, Status: "0x1F", TargetUserName: bob, ServiceName: "MSSQLSvc/sql{i:02d}"}}
+  - id: blind-spot/low-and-slow-single-ticket
+    kind: blind-spot
+    quote: {source: writeup, text: 'A "low and slow" attacker who requests a single high-value ticket and waits will sail past the velocity rule (#2)'}
+    expect: no-match
+    generate: {count: 1, start: "2026-10-23T10:00:00Z", step_seconds: 0,
+               template: {EventID: 4769, Status: "0x0", TargetUserName: mallory, ServiceName: "MSSQLSvc/finance01"}}
+  - id: blind-spot/fifteen-spns-over-7m30s
+    kind: blind-spot
+    quote: {source: writeup, text: 'A "low and slow" attacker'}
+    expect: no-match
+    generate: {count: 15, start: "2026-10-23T10:00:00Z", step_seconds: 30,
+               template: {_note: "15 distinct SPNs, spread so no 5-minute window holds 15", EventID: 4769, Status: "0x0", TargetUserName: bob, ServiceName: "HTTP/web{i:02d}"}}

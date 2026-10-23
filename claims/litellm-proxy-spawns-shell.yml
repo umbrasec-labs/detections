@@ -1,0 +1,51 @@
+schema: umbrasec.claims/v1
+rule: rules/linux/litellm-proxy-spawns-shell.yml
+rule_id: 7b3a1f02-9c5d-4e88-a1b6-2f4c7d9e0a13
+rule_sha256: a72f4bd1ed80e4998ef454259defd260de42540e05766688222fccca207aa27e
+engine: sigma
+writeup: research/detecting-litellm-command-injection.html
+reviewed: 2026-10-23
+event_defaults:
+  _synthetic: true
+fp_dispositions:
+  - bullet: "Scope to LiteLLM hosts/containers to cut generic python parent noise"
+    disposition: advice
+    reason: "Deployment scoping advice; there is no event shape to reproduce"
+claims:
+  - id: catches/python-spawns-shell
+    kind: catches
+    quote: {source: rule, text: "spawned a shell or a common recon/download utility"}
+    expect: match
+    events:
+      - {_note: "the proxy's Python process starts a shell", ParentImage: /usr/bin/python3, Image: /bin/sh}
+  - id: catches/gunicorn-spawns-download-tool
+    kind: catches
+    quote: {source: rule, text: "The LiteLLM proxy process (Python/uvicorn/gunicorn)"}
+    expect: match
+    events:
+      - {_note: "a gunicorn worker starts a download utility", ParentImage: /usr/local/bin/gunicorn, Image: /usr/bin/curl}
+      - {_note: "a uvicorn worker starts bash", ParentImage: /usr/local/bin/uvicorn, Image: /bin/bash}
+  - id: false-positive/entrypoint-script
+    kind: false-positive
+    quote: {source: rule, text: "Init/entrypoint scripts that legitimately shell out at container start"}
+    expect: match
+    events:
+      - {_note: "at container start the proxy's Python process runs its init step through /bin/sh", ParentImage: /usr/local/bin/python3, Image: /bin/sh}
+  - id: false-positive/health-check-tooling
+    kind: false-positive
+    quote: {source: rule, text: "Health-check or sidecar tooling that wraps the proxy in a shell"}
+    expect: match
+    events:
+      - {_note: "interpretation: a health-check hook run by a proxy worker through sh -c, so the worker is the parent. A shell that wraps python is the parent of python and does not match (see near-miss/shell-wraps-python)", ParentImage: /usr/local/bin/gunicorn, Image: /bin/sh}
+  - id: near-miss/python-spawns-ls
+    kind: near-miss
+    rationale: "ls is not in the child list"
+    expect: no-match
+    events:
+      - {ParentImage: /usr/bin/python3, Image: /usr/bin/ls}
+  - id: near-miss/shell-wraps-python
+    kind: near-miss
+    rationale: "A shell that launches the proxy is the parent, not the child"
+    expect: no-match
+    events:
+      - {_note: "an entrypoint shell starting the proxy", ParentImage: /bin/sh, Image: /usr/bin/python3}

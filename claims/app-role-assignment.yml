@@ -1,0 +1,37 @@
+schema: umbrasec.claims/v1
+rule: queries/kql/app-role-assignment.kql
+rule_id: null
+rule_sha256: 3fe6270138e391e6df61ac0d2ec4b0a45bb0476db0a295ae4794121768673116
+engine: kusto
+writeup: research/detecting-oauth-consent-phishing.html
+reviewed: 2026-10-23
+# Not executed: there is no Kusto engine in CI yet. Dynamic columns are given as
+# JSON strings, the way a CSV or JSON ingest would carry them.
+event_defaults:
+  _synthetic: true
+  TimeGenerated: "2026-10-23T10:00:00Z"
+  Result: success
+  InitiatedBy: '{"user": {"userPrincipalName": "admin@example.com"}}'
+  TargetResources: '[{"modifiedProperties": [{"displayName": "AppRole.Value", "newValue": "Mail.ReadWrite"}, {"displayName": "ServicePrincipal.DisplayName", "newValue": "Example Mail Archiver"}]}]'
+claims:
+  - id: catches/role-assigned-to-service-principal
+    kind: catches
+    quote: {source: rule, text: "App-role (application permission) assignments - standing, user-independent access"}
+    expect: match
+    table: AuditLogs
+    events:
+      - {OperationName: Add app role assignment to service principal}
+  - id: catches/role-assignment-grant-to-user
+    kind: catches
+    quote: {source: rule, text: "These should be rare, deliberate, and reconciled against a change ticket."}
+    expect: match
+    table: AuditLogs
+    events:
+      - {OperationName: Add app role assignment grant to user}
+  - id: near-miss/failed-assignment
+    kind: near-miss
+    rationale: "The query keeps successful operations only"
+    expect: no-match
+    table: AuditLogs
+    events:
+      - {OperationName: Add app role assignment to service principal, Result: failure}

@@ -1,0 +1,34 @@
+schema: umbrasec.claims-writeup/v1
+writeup: research/detecting-oauth-consent-phishing.html
+section: Honest limitations
+sentences:
+  - starts: "None of this is a silver bullet"
+    disposition: context
+    reason: "Framing for the list that follows; nothing to execute"
+  - starts: "Plenty of legitimate apps request Mail.Read."
+    disposition: context
+    reason: "A false-positive statement about the KQL queries; it can become a tested claim once a Kusto engine runs in CI"
+  - starts: "These detections surface candidates for triage"
+    disposition: context
+    reason: "Triage advice; nothing to execute"
+  - starts: "Schema drift is real."
+    disposition: prerequisite
+    reason: "The queries assume a modifiedProperties shape; the claims assume it too"
+  - starts: "The shape of modifiedProperties has changed over time."
+    disposition: prerequisite
+    reason: "A telemetry-shape statement; it needs a real tenant's logs, which synthetic events cannot stand in for"
+  - starts: "A query that works today can silently return nothing"
+    disposition: prerequisite
+    reason: "A telemetry-shape statement; regression tests against a tenant are out of scope here"
+  - starts: "App-only grants need privilege."
+    disposition: context
+    reason: "Explains what detection 3 signals; nothing to execute"
+  - starts: "The application-permission path generally requires an already-privileged actor"
+    disposition: context
+    reason: "Explains what detection 3 signals; nothing to execute"
+  - starts: "This is Microsoft-shaped."
+    disposition: context
+    reason: "Scope of the queries; nothing to execute"
+  - starts: "The same consent-phishing pattern exists against Google Workspace"
+    disposition: context
+    reason: "Scope of the queries; nothing to execute"

@@ -1,0 +1,63 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/masquerading-svchost-outside-system32.yml
+rule_id: 1991446b-a433-4c51-97c8-ab493c79afcd
+rule_sha256: 4e18c3db72ff750ec3b3ca945a9bf1069f032ea4b940c40520deb7c596c0a8a5
+engine: sigma
+writeup: research/n-able-ncentral-msp-supply-chain.html
+reviewed: 2026-10-23
+event_defaults:
+  _synthetic: true
+fp_dispositions: []
+claims:
+  - id: catches/documents-directory
+    kind: catches
+    quote: {source: rule, text: "where operators placed svchost.exe in a user's Documents directory"}
+    expect: match
+    events:
+      - {_note: "svchost.exe run from a user's Documents folder", Image: 'C:\Users\bob\Documents\svchost.exe'}
+  - id: near-miss/system32
+    kind: near-miss
+    rationale: "Genuine service hosting from System32; startswith is case-insensitive"
+    expect: no-match
+    events:
+      - {Image: 'C:\Windows\System32\svchost.exe'}
+      - {_note: "lower case", Image: 'c:\windows\system32\svchost.exe'}
+      - {_note: "upper case file name", Image: 'C:\Windows\System32\SVCHOST.EXE'}
+  - id: near-miss/syswow64
+    kind: near-miss
+    rationale: "SysWOW64 is one of the three filtered directories"
+    expect: no-match
+    events:
+      - {Image: 'C:\Windows\SysWOW64\svchost.exe'}
+  - id: near-miss/winsxs
+    kind: near-miss
+    rationale: "WinSxS is one of the three filtered directories"
+    expect: no-match
+    events:
+      - {Image: 'C:\Windows\WinSxS\amd64_microsoft-windows-services-svchost_31bf3856ad364e35_10.0.26100.1_none_0a1b2c3d4e5f6a7b\svchost.exe'}
+  - id: false-positive/installer-staging
+    kind: false-positive
+    quote: {source: rule, text: "Installers or update packages that stage a temporary copy of svchost.exe"}
+    expect: match
+    events:
+      - {_note: "an update package staging a copy under the Windows temp folder", Image: 'C:\Windows\Temp\4F2A1C3B-UPDATE\svchost.exe'}
+  - id: false-positive/windows-on-another-drive
+    kind: false-positive
+    quote: {source: rule, text: "Windows installed to a drive or directory other than C:\\Windows"}
+    expect: match
+    events:
+      - {_note: "a genuine svchost.exe on a build where Windows lives on D:", Image: 'D:\Windows\System32\svchost.exe'}
+  - id: false-positive/test-harness-copy
+    kind: false-positive
+    quote: {source: rule, text: "Software test harnesses and imaging tools that copy system binaries"}
+    expect: match
+    events:
+      - {_note: "a test harness running a copied system binary from its work folder", Image: 'C:\BuildAgent\work\fixtures\svchost.exe'}
+  - id: undocumented/nt-device-path
+    kind: undocumented
+    summary: "The filters are drive-letter paths. A sensor that reports the NT device path of the genuine binary (\\Device\\HarddiskVolume3\\Windows\\System32\\svchost.exe) makes every genuine svchost.exe fire. Whether a given sensor does this depends on the telemetry."
+    expect: match
+    confidence: needs-telemetry
+    upstream: pending
+    events:
+      - {_note: "genuine System32 svchost.exe as an NT device path", Image: '\Device\HarddiskVolume3\Windows\System32\svchost.exe'}

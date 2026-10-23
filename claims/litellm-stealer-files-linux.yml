@@ -1,0 +1,76 @@
+schema: umbrasec.claims/v1
+rule: rules/linux/litellm-stealer-files-linux.yml
+rule_id: 4b113653-9759-4c81-9fe0-eb8df655df30
+rule_sha256: 01ed04e35f7de2032897032d7555a2dec8a053ef09648d438b8eb451cb50663d
+engine: sigma
+writeup: null
+reviewed: 2026-10-23
+event_defaults:
+  _synthetic: true
+fp_dispositions: []
+claims:
+  - id: catches/hook-in-package-root
+    kind: catches
+    quote: {source: rule, text: "drops cook.pth and cook.py into the site-packages root (dist-packages on Debian and Ubuntu system Python)"}
+    expect: match
+    events:
+      - {_note: "site-packages root", TargetFilename: /usr/local/lib/python3.12/site-packages/cook.pth}
+      - {_note: "dist-packages root", TargetFilename: /usr/lib/python3/dist-packages/cook.py}
+  - id: catches/compiled-pyc
+    kind: catches
+    quote: {source: rule, text: "The .pth/.py pair and the compiled .pyc show the poisoned release was installed."}
+    expect: match
+    events:
+      - {TargetFilename: /usr/local/lib/python3.12/site-packages/__pycache__/cook.cpython-312.pyc}
+  - id: catches/working-directories
+    kind: catches
+    quote: {source: rule, text: "The stealer works out of /tmp/.pc_sq_* and /tmp/.pc_e_* directories"}
+    expect: match
+    events:
+      - {TargetFilename: /tmp/.pc_sq_x/y}
+      - {TargetFilename: /tmp/.pc_e_1/z}
+  - id: catches/loader-lock
+    kind: catches
+    quote: {source: rule, text: "a detached loader daemon holds /tmp/remote_code_loader.lock"}
+    expect: match
+    events:
+      - {TargetFilename: /tmp/remote_code_loader.lock}
+  - id: catches/run-once-marker
+    kind: catches
+    quote: {source: rule, text: "writes a run-once marker under /tmp once exfiltration succeeds"}
+    expect: match
+    events:
+      - {TargetFilename: /tmp/.pc_once_72129118c59f5636c0bb}
+  - id: catches/container-overlay-path
+    kind: catches
+    quote: {source: rule, text: "No path is anchored to the start so that host sensors on a Docker or Kubernetes node, which see container writes under the overlay or rootfs path, still fire."}
+    expect: match
+    events:
+      - {_note: "a container write seen by a host sensor under the overlay path", TargetFilename: /var/lib/docker/overlay2/3f9a1c7e/merged/tmp/.pc_once_72129118c59f5636c0bb}
+      - {_note: "a container's site-packages under the overlay path", TargetFilename: /var/lib/docker/overlay2/3f9a1c7e/merged/usr/local/lib/python3.12/site-packages/cook.pth}
+  - id: false-positive/package-named-cook
+    kind: false-positive
+    quote: {source: rule, text: "A legitimate package that ships a module named cook with a .pth hook would collide on the first two selections"}
+    expect: match
+    events:
+      - {_note: "a hypothetical legitimate package with a top-level cook module and .pth hook", TargetFilename: /usr/local/lib/python3.12/site-packages/cook.pth}
+      - {_note: "its compiled module", TargetFilename: /usr/local/lib/python3.12/site-packages/__pycache__/cook.cpython-312.pyc}
+  - id: false-positive/analyst-recreation
+    kind: false-positive
+    quote: {source: rule, text: "An analyst or test harness recreating the indicator files to exercise this rule"}
+    expect: match
+    events:
+      - {_note: "a test harness touching the marker file", TargetFilename: /tmp/.pc_once_72129118c59f5636c0bb}
+  - id: blind-spot/sitecustomize
+    kind: blind-spot
+    quote: {source: rule, text: "so that name is left to a hunt"}
+    expect: no-match
+    events:
+      - {_note: "the second-stage loader beside the hook", TargetFilename: /usr/local/lib/python3.12/site-packages/sitecustomize.py}
+  - id: near-miss/cook-outside-package-root
+    kind: near-miss
+    rationale: "Only the package root and its __pycache__ are indicators; a nested cook.py and a cookie.py are not"
+    expect: no-match
+    events:
+      - {TargetFilename: /usr/local/lib/python3.12/site-packages/foo/cook.py}
+      - {TargetFilename: /usr/lib/python3/dist-packages/cookie.py}

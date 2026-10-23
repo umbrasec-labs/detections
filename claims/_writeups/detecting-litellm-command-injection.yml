@@ -1,0 +1,31 @@
+schema: umbrasec.claims-writeup/v1
+writeup: research/detecting-litellm-command-injection.html
+section: Honest limitations
+sentences:
+  - starts: "Rule #1 needs host or container process telemetry"
+    disposition: prerequisite
+    reason: "A telemetry-availability statement for litellm-proxy-spawns-shell; synthetic events assume the telemetry exists"
+  - starts: "If that's you, this CVE is the business case"
+    disposition: context
+    reason: "Advice that follows from the prerequisite; nothing to execute"
+  - starts: "The endpoint rule can be evaded by the chain's framing."
+    disposition: not-reproduced
+    reason: "Showing it needs an evasion request shape, which the defensive-only policy rules out"
+  - starts: "The path itself is stable, but rely on rule #2 alone"
+    disposition: not-reproduced
+    reason: "Same limitation as the previous sentence; reproducing it needs an evasion request shape"
+  - starts: "No public IOCs from the in-the-wild attacks."
+    disposition: context
+    reason: "A statement about public reporting; nothing to execute"
+  - starts: "These detections target the technique, not a campaign"
+    disposition: context
+    reason: "Explains the design choice; nothing to execute"
+  - starts: "This is timely, and timeliness ages."
+    disposition: context
+    reason: "A note on shelf life; nothing to execute"
+  - starts: "Patch status is the real control"
+    disposition: context
+    reason: "Remediation advice; nothing to execute"
+  - starts: "Re-run the inventory step"
+    disposition: context
+    reason: "Remediation advice; nothing to execute"

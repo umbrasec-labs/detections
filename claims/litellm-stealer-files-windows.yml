@@ -1,0 +1,62 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/litellm-stealer-files-windows.yml
+rule_id: 1cc5748a-ebcf-4958-b479-d231563e20e1
+rule_sha256: f43e56bade5791d1eda8fc0f3d870918fd7597a3f96b45d9bddef84ea15e318f
+engine: sigma
+writeup: null
+reviewed: 2026-10-23
+event_defaults:
+  _synthetic: true
+fp_dispositions: []
+claims:
+  - id: catches/hook-in-site-packages-root
+    kind: catches
+    quote: {source: rule, text: "dropped into the site-packages root so that every Python start reruns the credential stealer"}
+    expect: match
+    events:
+      - {TargetFilename: 'C:\Users\alice\AppData\Local\Programs\Python\Python312\Lib\site-packages\cook.pth'}
+      - {TargetFilename: 'C:\Users\alice\AppData\Local\Programs\Python\Python312\Lib\site-packages\cook.py'}
+  - id: catches/compiled-pyc
+    kind: catches
+    quote: {source: rule, text: "The .pth/.py pair and the compiled .pyc show the poisoned release was installed."}
+    expect: match
+    events:
+      - {TargetFilename: 'C:\Users\alice\AppData\Local\Programs\Python\Python312\Lib\site-packages\__pycache__\cook.cpython-312.pyc'}
+  - id: catches/system-temp-directories
+    kind: catches
+    quote: {source: rule, text: "%TEMP% for a user, C:\\Windows\\Temp for a service"}
+    expect: match
+    events:
+      - {_note: "a user's %TEMP%", TargetFilename: 'C:\Users\alice\AppData\Local\Temp\.pc_sq_1\a'}
+      - {_note: "a service's temp folder", TargetFilename: 'C:\Windows\Temp\.pc_e_1\b'}
+  - id: catches/tmp-run-once-marker
+    kind: catches
+    quote: {source: rule, text: "where a \\tmp directory is present (Git for Windows, MSYS2) it is written once exfiltration succeeds, so it is matched too"}
+    expect: match
+    events:
+      - {TargetFilename: 'C:\tmp\.pc_once_72129118c59f5636c0bb'}
+  - id: catches/lower-case-path
+    kind: catches
+    quote: {source: rule, text: "files written under those show it ran on any Windows host"}
+    expect: match
+    events:
+      - {_note: "path reported in lower case; the contains match is case-insensitive", TargetFilename: 'c:\windows\temp\.pc_sq_2\c'}
+      - {_note: "hook path in lower case", TargetFilename: 'c:\python312\lib\site-packages\cook.pth'}
+  - id: false-positive/package-named-cook
+    kind: false-positive
+    quote: {source: rule, text: "A legitimate package that ships a module named cook with a .pth hook would collide"}
+    expect: match
+    events:
+      - {_note: "a hypothetical legitimate package with a top-level cook module and .pth hook", TargetFilename: 'C:\Python312\Lib\site-packages\cook.pth'}
+  - id: false-positive/analyst-recreation
+    kind: false-positive
+    quote: {source: rule, text: "An analyst or test harness recreating the indicator files to exercise this rule"}
+    expect: match
+    events:
+      - {_note: "a test harness creating a working directory", TargetFilename: 'C:\Windows\Temp\.pc_sq_test\probe.txt'}
+  - id: near-miss/cookiecutter-package
+    kind: near-miss
+    rationale: "A package directory whose name starts with cook is not the hook"
+    expect: no-match
+    events:
+      - {TargetFilename: 'C:\Python312\Lib\site-packages\cookiecutter\__init__.py'}

@@ -1,0 +1,98 @@
+# Re-prove every claim about the canonical sigma-pack rules.
+# Daily: catches upstream rule or writeup edits (claims go STALE or FAILING).
+# On push to main, weekly and on demand from main: the attest job also signs
+# out/predicate.json as a GitHub artifact attestation whose subjects are the
+# sigma-pack files' own digests. Failing and stale records are signed too; the
+# gate (the last step of the claims job) is what turns the run red.
+name: claims
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 5 * * *'
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: claims-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  claims:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      record: ${{ steps.prove.outputs.record }}
+    env:
+      UMBRASEC_UPSTREAM: _upstream
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out the canonical sigma-pack and its writeups
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: umbrasec-labs/umbrasec.dev
+          path: _upstream
+          persist-credentials: false
+          sparse-checkout: |
+            tools/sigma-pack
+            research
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install hash-locked dependencies
+        run: python -m pip install --require-hashes --no-deps -r requirements.txt
+      - name: Guard - this repo holds no rule text
+        run: python -m harness.guard
+      - name: Harness self-tests
+        run: python -m unittest discover -s tests -v
+      - name: Prove every claim against the live sigma-pack
+        id: prove
+        run: |
+          python -m harness.run --upstream _upstream --out out --exit-zero
+          echo "record=written" >> "$GITHUB_OUTPUT"
+      - name: Job summary
+        run: cat out/REPORT.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: claims
+          path: out/
+          if-no-files-found: warn
+      - name: Gate
+        run: python -m harness.gate out/claims.json
+
+  attest:
+    needs: claims
+    # Runs after a failed gate too, so failing and stale records are signed. Only
+    # main is signed, and only when the claims job wrote a record.
+    if: >-
+      ${{ !cancelled()
+      && needs.claims.outputs.record == 'written'
+      && github.ref == 'refs/heads/main'
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      || github.event.schedule == '41 5 * * 1') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: claims
+          path: out
+      - name: Attest the record for the exact rule bytes
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: out/subjects.sha256
+          predicate-type: https://umbrasec.dev/attestations/claims/v1
+          predicate-path: out/predicate.json

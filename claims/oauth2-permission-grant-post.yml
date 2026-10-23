@@ -1,0 +1,37 @@
+schema: umbrasec.claims/v1
+rule: queries/kql/oauth2-permission-grant-post.kql
+rule_id: null
+rule_sha256: c3f32227a4f280dc9e4974defd54b4b5e48b07d2631762baa0a44a71dfba48f3
+engine: kusto
+writeup: research/detecting-oauth-consent-phishing.html
+reviewed: 2026-10-23
+# Not executed: there is no Kusto engine in CI yet. The harness still checks the
+# schema, the quotes, _synthetic, and that every event key is a query identifier.
+event_defaults:
+  _synthetic: true
+  TimeGenerated: "2026-10-23T10:00:00Z"
+  UserId: "00000000-0000-0000-0000-000000000001"
+  AppId: "00000000-0000-0000-0000-000000000002"
+  IPAddress: "192.0.2.10"
+claims:
+  - id: catches/graph-post-creates-grant
+    kind: catches
+    quote: {source: rule, text: "The moment a delegated permission grant is created via Microsoft Graph"}
+    expect: match
+    table: MicrosoftGraphActivityLogs
+    events:
+      - {RequestMethod: POST, RequestUri: "https://graph.microsoft.com/v1.0/oauth2PermissionGrants", ResponseStatusCode: 201}
+  - id: near-miss/read-only-request
+    kind: near-miss
+    rationale: "Listing grants with GET creates nothing"
+    expect: no-match
+    table: MicrosoftGraphActivityLogs
+    events:
+      - {RequestMethod: GET, RequestUri: "https://graph.microsoft.com/v1.0/oauth2PermissionGrants", ResponseStatusCode: 200}
+  - id: near-miss/refused-request
+    kind: near-miss
+    rationale: "Only 200 and 201 responses mean a grant was created"
+    expect: no-match
+    table: MicrosoftGraphActivityLogs
+    events:
+      - {RequestMethod: POST, RequestUri: "https://graph.microsoft.com/v1.0/oauth2PermissionGrants", ResponseStatusCode: 403}
