@@ -1,7 +1,7 @@
 schema: umbrasec.claims/v1
 rule: rules/linux/litellm-proxy-spawns-shell.yml
 rule_id: 7b3a1f02-9c5d-4e88-a1b6-2f4c7d9e0a13
-rule_sha256: a72f4bd1ed80e4998ef454259defd260de42540e05766688222fccca207aa27e
+rule_sha256: 77278b25a4418279c56e127b8b66112da1b98b658ccc33b90b38cda51e17c7c0
 engine: sigma
 writeup: research/detecting-litellm-command-injection.html
 reviewed: 2026-10-23
@@ -25,6 +25,32 @@ claims:
     events:
       - {_note: "a gunicorn worker starts a download utility", ParentImage: /usr/local/bin/gunicorn, Image: /usr/bin/curl}
       - {_note: "a uvicorn worker starts bash", ParentImage: /usr/local/bin/uvicorn, Image: /bin/bash}
+  - id: catches/versioned-interpreter-parent
+    kind: catches
+    quote: {source: rule, text: "Sensors often report the resolved binary, so the rule also lists versioned interpreter names"}
+    expect: match
+    events:
+      - {_note: "the resolved interpreter python3.9 starts a shell", ParentImage: /usr/bin/python3.9, Image: /bin/sh}
+      - {_note: "python3.10", ParentImage: /usr/bin/python3.10, Image: /bin/sh}
+      - {_note: "python3.11", ParentImage: /usr/local/bin/python3.11, Image: /bin/bash}
+      - {_note: "python3.12", ParentImage: /usr/local/bin/python3.12, Image: /usr/bin/curl}
+      - {_note: "python3.13", ParentImage: /usr/bin/python3.13, Image: /bin/sh}
+      - {_note: "python3.14", ParentImage: /usr/bin/python3.14, Image: /bin/sh}
+  - id: catches/nc-resolved-names
+    kind: catches
+    quote: {source: rule, text: "the Debian/Ubuntu names nc resolves to"}
+    expect: match
+    events:
+      - {_note: "nc resolved to the OpenBSD variant", ParentImage: /usr/bin/python3, Image: /usr/bin/nc.openbsd}
+      - {_note: "nc resolved to the traditional variant", ParentImage: /usr/bin/python3, Image: /bin/nc.traditional}
+      - {_note: "the netcat name", ParentImage: /usr/local/bin/gunicorn, Image: /usr/bin/netcat}
+  - id: catches/busybox-child
+    kind: catches
+    quote: {source: rule, text: "and busybox, which is /bin/sh on Alpine and Wolfi images."}
+    expect: match
+    events:
+      - {_note: "on an Alpine image the shell resolves to busybox", ParentImage: /usr/bin/python3, Image: /bin/busybox}
+      - {_note: "a uvicorn worker on a Wolfi image", ParentImage: /usr/bin/uvicorn, Image: /usr/bin/busybox}
   - id: false-positive/entrypoint-script
     kind: false-positive
     quote: {source: rule, text: "Init/entrypoint scripts that legitimately shell out at container start"}
@@ -37,6 +63,13 @@ claims:
     expect: match
     events:
       - {_note: "interpretation: a health-check hook run by a proxy worker through sh -c, so the worker is the parent. A shell that wraps python is the parent of python and does not match (see near-miss/shell-wraps-python)", ParentImage: /usr/local/bin/gunicorn, Image: /bin/sh}
+  - id: false-positive/busybox-image
+    kind: false-positive
+    quote: {source: rule, text: "On busybox-based images every shell and utility runs as /bin/busybox, so the entrypoint and health-check cases above appear under that name too"}
+    expect: match
+    events:
+      - {_note: "on a busybox-based image the init step at container start runs as /bin/busybox", ParentImage: /usr/local/bin/python3, Image: /bin/busybox}
+      - {_note: "on a busybox-based image a health-check hook run by a worker runs as /bin/busybox", ParentImage: /usr/local/bin/gunicorn, Image: /bin/busybox}
   - id: near-miss/python-spawns-ls
     kind: near-miss
     rationale: "ls is not in the child list"
