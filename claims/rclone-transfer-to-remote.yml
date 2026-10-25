@@ -1,0 +1,129 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/rclone-transfer-to-remote.yml
+rule_id: 0f64f646-167c-4b27-8620-1195a95aa621
+rule_sha256: c085809330563a8ce40121f6244df1bba9cc8ffd6492eebaf26bb9c24846c0ee
+engine: sigma
+writeup: research/inc-ransom-australian-smb.html
+reviewed: 2026-10-25
+event_defaults:
+  _synthetic: true
+  Image: 'C:\Tools\rclone.exe'
+fp_dispositions: []
+claims:
+  - id: catches/transfer-verbs
+    kind: catches
+    quote: {source: rule, text: "(copy, copyto, sync, move, moveto, bisync, rcat, or archive create, which only exists from v1.72)"}
+    expect: match
+    events:
+      - {_note: "copy; src and dst are placeholders", CommandLine: "rclone.exe copy src dst:"}
+      - {_note: "copyto", CommandLine: "rclone.exe copyto src dst:"}
+      - {_note: "sync", CommandLine: "rclone.exe sync src dst:"}
+      - {_note: "move", CommandLine: "rclone.exe move src dst:"}
+      - {_note: "moveto", CommandLine: "rclone.exe moveto src dst:"}
+      - {_note: "bisync", CommandLine: "rclone.exe bisync src dst:"}
+      - {_note: "rcat", CommandLine: "rclone.exe rcat dst:"}
+      - {_note: "archive create", CommandLine: "rclone.exe archive create src dst:"}
+  - id: catches/huntress-include-from
+    kind: catches
+    quote: {source: rule, text: 'running "rclone copy" from the E: drive to a redacted mount point with an --include-from file list'}
+    expect: match
+    events:
+      - {_note: "the shape Huntress describes; the mount point is a placeholder", CommandLine: 'rclone.exe copy E:\ X:\ --include-from list.txt'}
+  - id: catches/renamed-by-original-file-name
+    kind: catches
+    quote: {source: rule, text: "official builds carry OriginalFilename rclone.exe and ProductName Rclone"}
+    expect: match
+    events:
+      - {_note: "renamed, OriginalFileName only", Image: 'C:\ProgramData\svc.exe', OriginalFileName: rclone.exe, CommandLine: "svc.exe copy src dst:"}
+      - {_note: "renamed, Product only", Image: 'C:\ProgramData\svc.exe', Product: Rclone, CommandLine: "svc.exe copy src dst:"}
+  - id: catches/renamed-by-description
+    kind: catches
+    quote: {source: rule, text: 'the FileDescription changed from "Rsync for cloud storage" (up to v1.62) to "Rclone" (v1.63 onward)'}
+    expect: match
+    events:
+      - {_note: "a renamed v1.63 or later build, description only", Image: 'C:\ProgramData\svc.exe', Description: Rclone, CommandLine: "svc.exe sync src dst:"}
+      - {_note: "a renamed v1.62 or earlier build, description only", Image: 'C:\ProgramData\svc.exe', Description: Rsync for cloud storage, CommandLine: "svc.exe sync src dst:"}
+  - id: catches/writeup-summary
+    kind: catches
+    quote: {source: writeup, text: "The rule matches rclone, including a renamed copy, started with a command that writes data to a destination."}
+    expect: match
+    events:
+      - {_note: "a renamed copy moving data", Image: 'C:\Users\Public\update.exe', OriginalFileName: rclone.exe, CommandLine: "update.exe move src dst:"}
+  - id: false-positive/sanctioned-backup-job
+    kind: false-positive
+    quote: {source: rule, text: "A sanctioned backup or migration job, such as a scheduled task that runs"}
+    expect: match
+    events:
+      - {_note: "the bullet's own example from a scheduled task", ParentImage: 'C:\Windows\System32\svchost.exe', CommandLine: 'rclone sync D:\Shares remote:backup'}
+  - id: false-positive/admin-migration
+    kind: false-positive
+    quote: {source: rule, text: 'An administrator running "rclone move" or "rclone copy" by hand'}
+    expect: match
+    events:
+      - {_note: "rclone move by hand", CommandLine: 'rclone move D:\old approved:archive'}
+      - {_note: "rclone copy by hand", CommandLine: 'rclone copy D:\old approved:archive'}
+  - id: false-positive/path-contains-verb
+    kind: false-positive
+    quote: {source: rule, text: "A non-transfer rclone command whose path argument contains a transfer word with spaces around it"}
+    expect: match
+    events:
+      - {_note: "the bullet's own example: ls on a folder with sync in its name", CommandLine: 'rclone ls "D:\Team sync folder"'}
+  - id: blind-spot/no-version-resource
+    kind: blind-spot
+    quote: {source: rule, text: "a renamed v1.52 or older or self-built binary has no version resource"}
+    expect: no-match
+    events:
+      - {_note: "renamed, no PE metadata at all", Image: 'C:\ProgramData\svc.exe', CommandLine: "svc.exe copy src dst:"}
+  - id: blind-spot/rcd-and-config
+    kind: blind-spot
+    quote: {source: rule, text: 'rclone driven through "rclone rcd" or a config-only workflow'}
+    expect: no-match
+    events:
+      - {_note: "the remote-control daemon; transfers arrive over its API", CommandLine: "rclone.exe rcd"}
+  - id: blind-spot/mount
+    kind: blind-spot
+    quote: {source: rule, text: 'files copied onto an "rclone mount" drive'}
+    expect: no-match
+    events:
+      - {_note: "the mount itself; later copies onto it are file writes", CommandLine: "rclone.exe mount dst: X:"}
+  - id: blind-spot/serve
+    kind: blind-spot
+    quote: {source: rule, text: 'or a local path published with "rclone serve" (http, sftp, ftp, webdav, s3 and others) for the attacker to pull'}
+    expect: no-match
+    events:
+      - {_note: "serve http", CommandLine: 'rclone.exe serve http E:\'}
+      - {_note: "serve sftp", CommandLine: 'rclone.exe serve sftp E:\'}
+  - id: blind-spot/quoted-or-tab-separated-verb
+    kind: blind-spot
+    quote: {source: rule, text: 'a verb written in quotes ("copy") or separated by tabs instead of spaces is missed'}
+    expect: no-match
+    events:
+      - {_note: "quoted verb", CommandLine: 'rclone.exe "copy" src dst:'}
+      - {_note: "tab-separated verb", CommandLine: "rclone.exe\tcopy\tsrc\tdst:"}
+  - id: blind-spot/no-pe-metadata
+    kind: blind-spot
+    quote: {source: rule, text: "telemetry without PE metadata (such as Security event 4688) leaves only the image-name match"}
+    expect: no-match
+    events:
+      - {_note: "a renamed official build seen through 4688: no OriginalFileName, Product or Description", Image: 'C:\Users\Public\update.exe', CommandLine: "update.exe copy src dst:"}
+  - id: blind-spot/megasync-and-restic
+    kind: blind-spot
+    quote: {source: writeup, text: "MEGAsync and Restic, also named above, are not covered by these rules."}
+    expect: no-match
+    events:
+      - {_note: "a sync client, not rclone", Image: 'C:\Users\Public\MEGAsync.exe', CommandLine: "MEGAsync.exe"}
+      - {_note: "restic with a word that is an rclone verb", Image: 'C:\Tools\restic.exe', CommandLine: "restic.exe copy src dst"}
+  - id: near-miss/non-transfer-commands
+    kind: near-miss
+    rationale: "Read-only or setup rclone commands with no transfer verb"
+    expect: no-match
+    events:
+      - {CommandLine: "rclone.exe version"}
+      - {CommandLine: "rclone.exe ls dst:"}
+      - {CommandLine: "rclone.exe config"}
+  - id: near-miss/other-binary-copy
+    kind: near-miss
+    rationale: "A copy verb from a binary that is not rclone"
+    expect: no-match
+    events:
+      - {Image: 'C:\Windows\System32\cmd.exe', CommandLine: "cmd.exe /c copy src dst"}

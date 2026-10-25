@@ -1,0 +1,100 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/defender-tamper-systemsettingsadminflows.yml
+rule_id: ca911907-3715-40b2-847a-5c3bbab84fcd
+rule_sha256: c04a6020915e63ec60422b4da6e5e1b61f12cee47c2ca90b807f2a2c95f3c42d
+engine: sigma
+writeup: research/inc-ransom-australian-smb.html
+reviewed: 2026-10-25
+event_defaults:
+  _synthetic: true
+  Image: 'C:\Windows\System32\SystemSettingsAdminFlows.exe'
+fp_dispositions: []
+claims:
+  - id: catches/run-from-shell
+    kind: catches
+    quote: {source: rule, text: 'was started with "defender" in its command line by something other than the Settings app'}
+    expect: match
+    events:
+      - {_note: "the binary run directly from cmd; the argument value is not modelled", ParentImage: 'C:\Windows\System32\cmd.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+  - id: catches/remote-shell-or-rmm
+    kind: catches
+    quote: {source: rule, text: "a shell, a remote shell, an RMM agent"}
+    expect: match
+    events:
+      - {_note: "a WinRM remote shell host as the parent", ParentImage: 'C:\Windows\System32\wsmprovhost.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+      - {_note: "an RMM agent as the parent", ParentImage: 'C:\Program Files\ExampleRMM\agent.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+  - id: catches/settings-name-elsewhere
+    kind: catches
+    quote: {source: rule, text: "or a file named SystemSettings.exe in any other folder is worth a look."}
+    expect: match
+    events:
+      - {_note: "a parent named SystemSettings.exe outside ImmersiveControlPanel", ParentImage: 'C:\Users\Public\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+      - {_note: "a parent in a look-alike folder", ParentImage: 'C:\Temp\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+  - id: catches/writeup-summary
+    kind: catches
+    quote: {source: writeup, text: 'The rule fires when that binary runs with "defender" in its command line from anything other than the Settings app.'}
+    expect: match
+    events:
+      - {_note: "PowerShell as the parent, lower-case argument", ParentImage: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe', CommandLine: "SystemSettingsAdminFlows.exe defender"}
+  - id: excluded/settings-app-parent
+    kind: excluded
+    quote: {source: rule, text: "A Settings app parent is the usual GUI path and is filtered out"}
+    expect: no-match
+    events:
+      - {_note: "the genuine Settings app", ParentImage: 'C:\Windows\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+  - id: excluded/other-system-drive
+    kind: excluded
+    quote: {source: rule, text: "endswith allows a system drive other than C:."}
+    expect: no-match
+    events:
+      - {_note: "Windows installed on D:", ParentImage: 'D:\Windows\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+      - {_note: "an NT device path for the genuine Settings app also ends with the folder", ParentImage: '\Device\HarddiskVolume3\Windows\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+  - id: false-positive/admin-script
+    kind: false-positive
+    quote: {source: rule, text: "An administrator or deployment script that runs SystemSettingsAdminFlows.exe with a Defender argument from cmd or PowerShell"}
+    expect: match
+    events:
+      - {_note: "a deployment script changes a setting on purpose", ParentImage: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+  - id: false-positive/turn-back-on
+    kind: false-positive
+    quote: {source: rule, text: "A script that turns Defender protection back on through the same binary."}
+    expect: match
+    events:
+      - {_note: "the same shape as an off switch; the value is not read", ParentImage: 'C:\Windows\System32\cmd.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+  - id: false-positive/explorer-parent
+    kind: false-positive
+    quote: {source: rule, text: "A Defender change made through the Windows shell."}
+    expect: match
+    events:
+      - {_note: "Explorer.exe as the parent of a GUI change", ParentImage: 'C:\Windows\explorer.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+  - id: blind-spot/other-tamper-paths
+    kind: blind-spot
+    quote: {source: rule, text: "Defender switched off any other way (Set-MpPreference, direct registry writes, Group Policy or a third-party EDR killer) never touches this binary"}
+    expect: no-match
+    events:
+      - {_note: "the cmdlet name only, not a working command", Image: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe', ParentImage: 'C:\Windows\System32\cmd.exe', CommandLine: "powershell Set-MpPreference"}
+      - {_note: "a registry tool touching a Defender key; no value is modelled", Image: 'C:\Windows\System32\reg.exe', ParentImage: 'C:\Windows\System32\cmd.exe', CommandLine: 'reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows Defender"'}
+  - id: blind-spot/settings-app-over-rdp
+    kind: blind-spot
+    quote: {source: rule, text: "A change made by clicking in the Settings app, including by an intruder over RDP, is filtered out by design"}
+    expect: no-match
+    events:
+      - {_note: "an intruder clicking in Settings in an RDP session looks like any user", ParentImage: 'C:\Windows\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+  - id: near-miss/other-setting
+    kind: near-miss
+    rationale: "The binary run from a shell for a setting with no defender in its command line"
+    expect: no-match
+    events:
+      - {ParentImage: 'C:\Windows\System32\cmd.exe', CommandLine: "SystemSettingsAdminFlows.exe SetInternetTime"}
+  - id: near-miss/other-binary
+    kind: near-miss
+    rationale: "Another binary with defender in its command line"
+    expect: no-match
+    events:
+      - {Image: 'C:\Program Files\Windows Defender\MpCmdRun.exe', ParentImage: 'C:\Windows\System32\cmd.exe', CommandLine: '"C:\Program Files\Windows Defender\MpCmdRun.exe" -SignatureUpdate', OriginalFileName: MpCmdRun.exe}
+  - id: catches/renamed-copy
+    kind: catches
+    quote: {source: rule, text: "The binary is matched by image name or by OriginalFileName, so a renamed copy also fires."}
+    expect: match
+    events:
+      - {_note: "a renamed copy keeps its PE OriginalFileName", Image: 'C:\Users\Public\s.exe', OriginalFileName: SystemSettingsAdminFlows.EXE, ParentImage: 'C:\Windows\System32\cmd.exe', CommandLine: "s.exe Defender"}

@@ -1,0 +1,22 @@
+schema: umbrasec.claims-writeup/v1
+writeup: research/safepay-australian-smb.html
+section: Honest limitations
+sentences:
+  - starts: "The Essential Eight is a strong baseline, not a force field."
+    disposition: context
+    reason: "Policy framing of the controls; nothing to execute"
+  - starts: "It does little to recover data already exfiltrated"
+    disposition: context
+    reason: "Policy advice about recovery and double extortion; nothing to execute"
+  - starts: "An attacker who phishes an MFA-fatigued user"
+    disposition: context
+    reason: "Policy advice about initial access and incident response; nothing to execute"
+  - starts: "And because reporting on a fast-moving crew"
+    disposition: context
+    reason: "A sourcing statement about how general the stages are; nothing to execute"
+  - starts: "The point of mapping to the Essential Eight"
+    disposition: context
+    reason: "Policy framing of layered controls; nothing to execute"
+  - starts: "If you want to check which of these controls you actually have"
+    disposition: context
+    reason: "A pointer to a guide; nothing to execute"
