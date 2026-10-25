@@ -1,7 +1,7 @@
 schema: umbrasec.claims/v1
 rule: rules/windows/defender-tamper-systemsettingsadminflows.yml
 rule_id: ca911907-3715-40b2-847a-5c3bbab84fcd
-rule_sha256: c04a6020915e63ec60422b4da6e5e1b61f12cee47c2ca90b807f2a2c95f3c42d
+rule_sha256: 8b38c70c25e45deed77a78424a381a77ec28bae352c0667e2416fb4dca8e23c5
 engine: sigma
 writeup: research/inc-ransom-australian-smb.html
 reviewed: 2026-10-25
@@ -30,6 +30,7 @@ claims:
     events:
       - {_note: "a parent named SystemSettings.exe outside ImmersiveControlPanel", ParentImage: 'C:\Users\Public\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
       - {_note: "a parent in a look-alike folder", ParentImage: 'C:\Temp\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+      - {_note: "a nested look-alike Windows folder under a user-writable path", ParentImage: 'C:\Users\Public\Windows\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
   - id: catches/writeup-summary
     kind: catches
     quote: {source: writeup, text: 'The rule fires when that binary runs with "defender" in its command line from anything other than the Settings app.'}
@@ -44,11 +45,16 @@ claims:
       - {_note: "the genuine Settings app", ParentImage: 'C:\Windows\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
   - id: excluded/other-system-drive
     kind: excluded
-    quote: {source: rule, text: "endswith allows a system drive other than C:."}
+    quote: {source: rule, text: "any drive letter is allowed."}
     expect: no-match
     events:
       - {_note: "Windows installed on D:", ParentImage: 'D:\Windows\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
-      - {_note: "an NT device path for the genuine Settings app also ends with the folder", ParentImage: '\Device\HarddiskVolume3\Windows\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
+  - id: false-positive/nt-device-path
+    kind: false-positive
+    quote: {source: rule, text: "The genuine Settings app on a sensor that logs the parent as an NT device path"}
+    expect: match
+    events:
+      - {_note: "the genuine Settings app, logged without a drive letter", ParentImage: '\Device\HarddiskVolume3\Windows\ImmersiveControlPanel\SystemSettings.exe', CommandLine: "SystemSettingsAdminFlows.exe Defender"}
   - id: false-positive/admin-script
     kind: false-positive
     quote: {source: rule, text: "An administrator or deployment script that runs SystemSettingsAdminFlows.exe with a Defender argument from cmd or PowerShell"}
