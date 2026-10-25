@@ -17,6 +17,18 @@ sentences:
   - starts: "The point of mapping to the Essential Eight"
     disposition: context
     reason: "Policy framing of layered controls; nothing to execute"
+  - starts: "Updated 2026-10-25: the remote access rule in the Detection section sees installed services only"
+    disposition: context
+    reason: "Not proved in this ledger. The same sentence in inc-ransom-australian-smb.html is tested by remote-access-tool-service-install/blind-spot/portable-run; a claims file binds one writeup, so its claims cannot quote this copy"
+  - starts: "It also misses a remote access tool registered as a service under an innocuous name"
+    disposition: context
+    reason: "Not proved in this ledger. The same sentence in inc-ransom-australian-smb.html is tested by remote-access-tool-service-install/blind-spot/renamed-service-unrelated-folder, blind-spot/folder-only-tool-other-folder and blind-spot/unlisted-tool; a claims file binds one writeup"
+  - starts: "And it cannot see abuse of your own sanctioned instance"
+    disposition: context
+    reason: "Not proved in this ledger. The same sentence in inc-ransom-australian-smb.html is tested by remote-access-tool-service-install/blind-spot/sanctioned-instance-abuse and blind-spot/spoofed-sanctioned-id; a claims file binds one writeup"
+  - starts: "If you sanction a tool whose default path holds no instance identifier"
+    disposition: context
+    reason: "Not proved in this ledger. The same sentence in inc-ransom-australian-smb.html is tested by remote-access-tool-service-install/catches/sanctioned-tool-without-instance-id; a claims file binds one writeup"
   - starts: "If you want to check which of these controls you actually have"
     disposition: context
     reason: "A pointer to a guide; nothing to execute"

@@ -17,6 +17,25 @@ sentences:
   - starts: "The point of mapping to the Essential Eight"
     disposition: context
     reason: "Policy framing of layered controls; nothing to execute"
+  - starts: "Updated 2026-10-25: the remote access rule in the Detection section sees installed services only"
+    disposition: tested
+    claims:
+      - remote-access-tool-service-install/blind-spot/portable-run
+  - starts: "It also misses a remote access tool registered as a service under an innocuous name"
+    disposition: tested
+    claims:
+      - remote-access-tool-service-install/blind-spot/renamed-service-unrelated-folder
+      - remote-access-tool-service-install/blind-spot/folder-only-tool-other-folder
+      - remote-access-tool-service-install/blind-spot/unlisted-tool
+  - starts: "And it cannot see abuse of your own sanctioned instance"
+    disposition: tested
+    claims:
+      - remote-access-tool-service-install/blind-spot/sanctioned-instance-abuse
+      - remote-access-tool-service-install/blind-spot/spoofed-sanctioned-id
+  - starts: "If you sanction a tool whose default path holds no instance identifier"
+    disposition: tested
+    claims:
+      - remote-access-tool-service-install/catches/sanctioned-tool-without-instance-id
   - starts: "If you want to check which of these controls you actually have"
     disposition: context
     reason: "A pointer to a guide; nothing to execute"

@@ -31,7 +31,8 @@ Every sentence in a referenced writeup's "Honest limitations" section has one en
 - It does not test your SIEM's field mappings or your telemetry. A rule can pass here and still miss in your environment if your sensor names or formats a field differently.
 - Case folding is ASCII only. SQLite `NOCASE` and `LIKE` fold A to Z and nothing else.
 - The same author writes the rules and the claims, so confirmation bias is possible. Outside claims are welcome.
-- The three KQL queries get schema and quote checks and show as `not-executed`. There is no Kusto engine in CI yet.
+- A claims file binds one writeup. When two writeups carry the same limitation sentence, only the first writeup's ledger proves it; the second marks its copy `context` with a reason that names the claims, and nothing checks that the two copies stay the same.
+- The KQL queries get schema and quote checks and show as `not-executed`. There is no Kusto engine in CI yet.
 
 ## Status
 
