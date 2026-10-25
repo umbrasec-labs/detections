@@ -32,3 +32,42 @@ sentences:
   - starts: "The same consent-phishing pattern exists against Google Workspace"
     disposition: context
     reason: "Scope of the queries; nothing to execute"
+  - starts: "Persistence is not only keys."
+    disposition: context
+    reason: "Heading of the bullet on detection 4's federated-credential gap; nothing to execute"
+  - starts: "Detection #4 reads the KeyDescription property"
+    disposition: context
+    reason: "Describes what detection 4 reads; the KQL claims are schema and quote checked only until a Kusto engine runs in CI"
+  - starts: "A federated identity credential, which lets tokens"
+    disposition: not-reproduced
+    reason: "How Entra audits federated identity credential creation is not documented; a synthetic event would invent its modifiedProperties shape"
+  - starts: "The phishing app's own keys are out of sight."
+    disposition: context
+    reason: "Heading of the bullet on cross-tenant apps; nothing to execute"
+  - starts: "An application object, with its secrets and certificates"
+    disposition: context
+    reason: "A tenancy fact from Microsoft's application object docs; the event never reaches this tenant's logs, so there is nothing to feed the query"
+  - starts: "Detection #4 catches keys added to apps registered in your tenant"
+    disposition: context
+    reason: "Scope of detection 4; the catches claims in claims/app-credential-added.yml cover both target types"
+  - starts: "The key format is undocumented."
+    disposition: context
+    reason: "Heading of the bullet on the KeyDescription shape; nothing to execute"
+  - starts: "Microsoft Learn does not document the KeyDescription value"
+    disposition: prerequisite
+    reason: "A telemetry-shape statement; the claims assume the same shape Microsoft's Sentinel rules parse"
+  - starts: "Microsoft's security operations guide lists Update Service principal"
+    disposition: context
+    reason: "Describes which activity names detection 4 matches; catches/update-service-principal-activity and near-miss/update-application-without-key cover it, schema and quote checked only until a Kusto engine runs in CI"
+  - starts: "UMBRASEC has not verified that those activities carry KeyDescription"
+    disposition: prerequisite
+    reason: "Needs a real tenant's audit log for app creation and PATCH; synthetic events cannot settle an activity name or its modifiedProperties shape"
+  - starts: "Rotation is noisy."
+    disposition: context
+    reason: "Heading of the bullet on rotation noise; nothing to execute"
+  - starts: "Scheduled key rotation adds credentials too"
+    disposition: context
+    reason: "A false-positive and duplicate-row statement about detection 4; it can become a tested claim once a Kusto engine runs in CI"
+  - starts: "A system action also shows its initiator as an app"
+    disposition: context
+    reason: "Tuning advice for the ByApp flag; nothing to execute"

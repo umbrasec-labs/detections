@@ -1,0 +1,243 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/remote-access-tool-service-install.yml
+rule_id: 659eec79-30e7-4619-8659-745be2f9cdf9
+rule_sha256: f47b032ad7c8431b06088150b0913c61ab0950d24962796093916e4b6b778af9
+engine: sigma
+writeup: research/inc-ransom-australian-smb.html
+reviewed: 2026-10-25
+event_defaults:
+  _synthetic: true
+  EventID: 7045
+fp_dispositions: []
+# ScreenConnect folder and service names below wrap the 16-hex client id in
+# "(...)". Microsoft documents only "ScreenConnect Client" followed by the id
+# for the service key and folder, so the bracket style is assumed.
+claims:
+  - id: catches/screenconnect-default-install
+    kind: catches
+    quote: {source: rule, text: 'the ScreenConnect.ClientService.exe binary or a service name starting "ScreenConnect Client"'}
+    expect: match
+    events:
+      - {_note: "Microsoft documents a ScreenConnect Client <16-hex id> service key and folder; the id is one Huntress published as a rogue instance ID without a path, and its placement and bracket style are assumed", ServiceName: 'ScreenConnect Client (ababcab28dcdb35c)', ImagePath: '"C:\Program Files (x86)\ScreenConnect Client (ababcab28dcdb35c)\ScreenConnect.ClientService.exe"'}
+  - id: catches/screenconnect-binary-under-other-name
+    kind: catches
+    quote: {source: rule, text: "the ScreenConnect.ClientService.exe binary"}
+    expect: match
+    events:
+      - {_note: "service renamed, ScreenConnect binary still in the ImagePath", ServiceName: WinSupportHelper, ImagePath: 'C:\ProgramData\support\ScreenConnect.ClientService.exe'}
+  - id: catches/screenconnect-name-with-other-binary
+    kind: catches
+    quote: {source: rule, text: 'a service name starting "ScreenConnect Client"'}
+    expect: match
+    events:
+      - {_note: "the service name alone is enough", ServiceName: 'ScreenConnect Client (0123456789abcdef)', ImagePath: 'C:\ProgramData\sc\client.exe'}
+  - id: catches/anydesk-standard-and-custom
+    kind: catches
+    quote: {source: rule, text: "which covers the install folder, custom clients installed as AnyDesk-<prefix>"}
+    expect: match
+    events:
+      - {_note: "standard client default path; the arguments are assumed", ServiceName: AnyDesk, ImagePath: '"C:\Program Files (x86)\AnyDesk\AnyDesk.exe" --service'}
+      - {_note: "custom client path from my.anydesk.com; the arguments are assumed", ServiceName: AnyDesk-ab12cd34, ImagePath: '"C:\Program Files (x86)\AnyDesk-ab12cd34\AnyDesk-ab12cd34.exe" --service'}
+  - id: catches/anydesk-binary-any-folder
+    kind: catches
+    quote: {source: rule, text: "and the AnyDesk.exe binary in any folder"}
+    expect: match
+    events:
+      - {_note: "AnyDesk.exe registered from a download folder; no AnyDesk folder in the path", ServiceName: Updater, ImagePath: 'C:\Users\Public\Downloads\AnyDesk.exe'}
+  - id: catches/teamviewer-install-folder
+    kind: catches
+    quote: {source: rule, text: "TeamViewer is matched on its install folder"}
+    expect: match
+    events:
+      - {_note: "x86 default folder; the binary name is not what the rule keys on", ServiceName: TeamViewer, ImagePath: 'C:\Program Files (x86)\TeamViewer\TeamViewer.exe'}
+      - {_note: "x64 default folder", ServiceName: TeamViewer, ImagePath: 'C:\Program Files\TeamViewer\TeamViewer.exe'}
+  - id: catches/simplehelp-remote-access-service
+    kind: catches
+    quote: {source: rule, text: "SimpleHelp on the JWrapper-Remote Access folder of its Remote Access Service"}
+    expect: match
+    events:
+      - {_note: "%PROGRAMDATA%\\JWrapper-Remote Access expanded; the binary name and service name are assumed", ServiceName: Remote Access Service, ImagePath: 'C:\ProgramData\JWrapper-Remote Access\service.exe'}
+  - id: catches/mesh-agent
+    kind: catches
+    quote: {source: rule, text: "meshagent.exe"}
+    expect: match
+    events:
+      - {_note: "MeshCentral's default application path, in the lower case the vendor writes it", ServiceName: Mesh Agent, ImagePath: 'c:\Program Files\Mesh Agent\meshagent.exe'}
+  - id: catches/rustdesk-install-folder
+    kind: catches
+    quote: {source: rule, text: "RustDesk on its install folder"}
+    expect: match
+    events:
+      - {_note: "$env:ProgramFiles\\RustDesk after --install-service, binary renamed and service name changed so only the folder matches; names and arguments are assumed", ServiceName: RemoteHelper, ImagePath: '"C:\Program Files\RustDesk\helper.exe" --service'}
+  - id: catches/rustdesk-binary-or-service-name
+    kind: catches
+    quote: {source: rule, text: "the rustdesk.exe binary or the Rustdesk service name from RustDesk's deployment script"}
+    expect: match
+    events:
+      - {_note: "the vendor's binary name and service name, installed outside the RustDesk folder; the folder and arguments are assumed", ServiceName: Rustdesk, ImagePath: 'C:\ProgramData\rd\rustdesk.exe --service'}
+      - {_note: "the vendor's service name alone, binary renamed and moved", ServiceName: Rustdesk, ImagePath: 'C:\ProgramData\rd\rd.exe'}
+      - {_note: "the vendor's binary name alone, service renamed and moved", ServiceName: RemoteHelper, ImagePath: 'C:\ProgramData\rd\rustdesk.exe'}
+  - id: catches/writeup-summary
+    kind: catches
+    quote: {source: writeup, text: "The rule fires when Windows registers a service for ScreenConnect, AnyDesk, TeamViewer, SimpleHelp, Mesh Agent or RustDesk"}
+    expect: match
+    events:
+      - {_note: "a rogue ScreenConnect on a network that runs a different RMM, the Huntress INC case", ServiceName: 'ScreenConnect Client (ababcab28dcdb35c)', ImagePath: 'C:\Program Files (x86)\ScreenConnect Client (ababcab28dcdb35c)\ScreenConnect.ClientService.exe'}
+  - id: catches/placeholder-filter-fires-on-every-install
+    kind: catches
+    quote: {source: rule, text: "While the placeholder stays, the filter matches nothing and the rule fires on every install."}
+    expect: match
+    events:
+      - {_note: "the organisation's own ScreenConnect before the filter is edited", ServiceName: 'ScreenConnect Client (fedcba9876543210)', ImagePath: 'C:\Program Files (x86)\ScreenConnect Client (fedcba9876543210)\ScreenConnect.ClientService.exe'}
+  - id: false-positive/own-sanctioned-tool-before-filter
+    kind: false-positive
+    quote: {source: rule, text: "Your own sanctioned remote access tool, on every new or rebuilt host, until you put a string unique to it in filter_sanctioned_rmm"}
+    expect: match
+    events:
+      - {_note: "the organisation's AnyDesk custom client on a rebuilt laptop", ServiceName: AnyDesk-ab12cd34, ImagePath: 'C:\Program Files (x86)\AnyDesk-ab12cd34\AnyDesk-ab12cd34.exe'}
+  - id: false-positive/vendor-support-agent
+    kind: false-positive
+    quote: {source: rule, text: "A software vendor or MSP installing its own remote support agent, such as a line-of-business vendor's ScreenConnect or TeamViewer"}
+    expect: match
+    events:
+      - {_note: "a vendor's ScreenConnect", ServiceName: 'ScreenConnect Client (1111222233334444)', ImagePath: 'C:\Program Files (x86)\ScreenConnect Client (1111222233334444)\ScreenConnect.ClientService.exe'}
+      - {_note: "a vendor's TeamViewer", ServiceName: TeamViewer, ImagePath: 'C:\Program Files\TeamViewer\TeamViewer.exe'}
+  - id: false-positive/user-or-helpdesk-install
+    kind: false-positive
+    quote: {source: rule, text: "A user or helpdesk technician installing AnyDesk, TeamViewer or RustDesk for one-off support"}
+    expect: match
+    events:
+      - {_note: "AnyDesk", ServiceName: AnyDesk, ImagePath: 'C:\Program Files (x86)\AnyDesk\AnyDesk.exe'}
+      - {_note: "TeamViewer", ServiceName: TeamViewer, ImagePath: 'C:\Program Files (x86)\TeamViewer\TeamViewer.exe'}
+      - {_note: "RustDesk", ServiceName: RustDesk, ImagePath: 'C:\Program Files\RustDesk\rustdesk.exe'}
+  - id: false-positive/tactical-rmm-mesh-agent
+    kind: false-positive
+    quote: {source: rule, text: "A sanctioned Tactical RMM deployment, which installs Mesh Agent"}
+    expect: match
+    events:
+      - {_note: "Mesh Agent installed by a sanctioned Tactical RMM", ServiceName: Mesh Agent, ImagePath: 'C:\Program Files\Mesh Agent\meshagent.exe'}
+  - id: excluded/sanctioned-instance-filter
+    kind: excluded
+    quote: {source: rule, text: "put a string unique to your own sanctioned remote access tool in filter_sanctioned_rmm, copied from its service ImagePath"}
+    expect: no-match
+    events:
+      - {_note: "the placeholder stands in for the identifier a defender copies in; a ScreenConnect instance whose folder carries it", ServiceName: 'ScreenConnect Client (EDIT-ME-your-sanctioned-rmm-id)', ImagePath: 'C:\Program Files (x86)\ScreenConnect Client (EDIT-ME-your-sanctioned-rmm-id)\ScreenConnect.ClientService.exe'}
+      - {_note: "the same filter string as an AnyDesk custom client prefix", ServiceName: AnyDesk-custom, ImagePath: 'C:\Program Files (x86)\AnyDesk-EDIT-ME-your-sanctioned-rmm-id\AnyDesk-EDIT-ME-your-sanctioned-rmm-id.exe'}
+  - id: catches/filter-is-per-instance
+    kind: catches
+    quote: {source: rule, text: "Exclude your instance, not the product"}
+    expect: match
+    events:
+      - {_note: "with the sanctioned identifier in the filter (excluded/sanctioned-instance-filter), a second ScreenConnect instance whose folder lacks it still fires", ServiceName: 'ScreenConnect Client (aaaabbbbccccdddd)', ImagePath: 'C:\Program Files (x86)\ScreenConnect Client (aaaabbbbccccdddd)\ScreenConnect.ClientService.exe'}
+      - {_note: "the same for a second AnyDesk custom client with another prefix", ServiceName: AnyDesk-ef56ab78, ImagePath: 'C:\Program Files (x86)\AnyDesk-ef56ab78\AnyDesk-ef56ab78.exe'}
+  - id: catches/sanctioned-tool-without-instance-id
+    kind: catches
+    quote: {source: writeup, text: "the rule fires on every new host that installs it"}
+    expect: match
+    events:
+      - {_note: "a sanctioned TeamViewer at the vendor's default folder; nothing in the path is unique to the organisation", ServiceName: TeamViewer, ImagePath: 'C:\Program Files\TeamViewer\TeamViewer.exe'}
+      - {_note: "a sanctioned Mesh Agent at MeshCentral's default application path", ServiceName: Mesh Agent, ImagePath: 'c:\Program Files\Mesh Agent\meshagent.exe'}
+  - id: blind-spot/portable-run
+    kind: blind-spot
+    quote: {source: writeup, text: "an operator who runs AnyDesk or ScreenConnect as a portable executable never trips it"}
+    expect: no-match
+    events:
+      - {_note: "a portable run shows up only as a process start, never as a 7045", EventID: 4688, NewProcessName: 'C:\Users\user1\Downloads\AnyDesk.exe'}
+      - {_note: "the same for a portable ScreenConnect client", EventID: 4688, NewProcessName: 'C:\Users\user1\Downloads\ScreenConnect.ClientService.exe'}
+  - id: blind-spot/portable-run-rule
+    kind: blind-spot
+    quote: {source: rule, text: "a portable run creates no service"}
+    expect: no-match
+    events:
+      - {_note: "a portable RustDesk run inside the user session", EventID: 4688, NewProcessName: 'C:\Users\user1\Downloads\rustdesk.exe'}
+  - id: blind-spot/renamed-service-unrelated-folder
+    kind: blind-spot
+    quote: {source: writeup, text: "registered as a service under an innocuous name with its binary renamed and copied to an unrelated folder"}
+    expect: no-match
+    events:
+      - {_note: "nothing in the event names the tool", ServiceName: WinUpdateHelper, ImagePath: 'C:\ProgramData\helper\svchelper.exe'}
+  - id: blind-spot/renamed-service-rule
+    kind: blind-spot
+    quote: {source: rule, text: "a service registered under an innocuous name with its binary renamed and copied to an unrelated folder is missed"}
+    expect: no-match
+    events:
+      - {_note: "a remote access binary renamed and moved", ServiceName: PrintSpoolHelper, ImagePath: 'C:\Windows\Temp\spoolhelp.exe'}
+  - id: blind-spot/folder-only-tool-other-folder
+    kind: blind-spot
+    quote: {source: writeup, text: "a TeamViewer or SimpleHelp copy installed to any other folder, even under its own service name"}
+    expect: no-match
+    events:
+      - {_note: "TeamViewer keeps its own binary and service name in a non-default folder; the binary name is assumed, the vendor documents only the folder", ServiceName: TeamViewer, ImagePath: 'C:\ProgramData\tv\TeamViewer.exe'}
+  - id: blind-spot/folder-only-tool-other-folder-rule
+    kind: blind-spot
+    quote: {source: rule, text: "TeamViewer and SimpleHelp are matched on their folder only, so a copy installed to any other folder is missed even under its own service name"}
+    expect: no-match
+    events:
+      - {_note: "SimpleHelp in a non-default folder; the service name and binary name are assumed", ServiceName: Remote Access Service, ImagePath: 'C:\ProgramData\sh\service.exe'}
+  - id: blind-spot/unlisted-tool
+    kind: blind-spot
+    quote: {source: writeup, text: "and any tool it does not list, such as Atera or Splashtop"}
+    expect: no-match
+    events:
+      - {_note: "an unlisted remote access tool; the names are placeholders, not vendor defaults", ServiceName: ExampleRMM Agent, ImagePath: 'C:\Program Files\ExampleRMM\agent.exe'}
+  - id: blind-spot/unlisted-tool-rule
+    kind: blind-spot
+    quote: {source: rule, text: "tools not listed here, such as Atera, Splashtop, N-able or BeyondTrust, are missed"}
+    expect: no-match
+    events:
+      - {_note: "another unlisted tool; placeholder names", ServiceName: Example Remote Support, ImagePath: 'C:\Program Files (x86)\Example Remote\support.exe'}
+  - id: blind-spot/sanctioned-instance-abuse
+    kind: blind-spot
+    quote: {source: writeup, text: "it cannot see abuse of your own sanctioned instance"}
+    expect: no-match
+    events:
+      - {_note: "an attacker with a stolen console account pushes the organisation's own agent to a new host; the filter silences it", ServiceName: 'ScreenConnect Client (EDIT-ME-your-sanctioned-rmm-id)', ImagePath: 'C:\Program Files (x86)\ScreenConnect Client (EDIT-ME-your-sanctioned-rmm-id)\ScreenConnect.ClientService.exe'}
+  - id: blind-spot/sanctioned-instance-abuse-rule
+    kind: blind-spot
+    quote: {source: rule, text: "abuse of your own sanctioned instance, such as a stolen console account, passes the filter by design"}
+    expect: no-match
+    events:
+      - {_note: "the same, through the AnyDesk custom client", ServiceName: AnyDesk-custom, ImagePath: 'C:\Program Files (x86)\AnyDesk-EDIT-ME-your-sanctioned-rmm-id\AnyDesk-EDIT-ME-your-sanctioned-rmm-id.exe'}
+  - id: blind-spot/spoofed-sanctioned-id
+    kind: blind-spot
+    quote: {source: writeup, text: "or who copies your identifier into their own service path"}
+    expect: no-match
+    events:
+      - {_note: "a foreign ScreenConnect instance with the sanctioned identifier copied into an argument; the argument format is assumed", ServiceName: 'ScreenConnect Client (aaaabbbbccccdddd)', ImagePath: '"C:\Program Files (x86)\ScreenConnect Client (aaaabbbbccccdddd)\ScreenConnect.ClientService.exe" "x=EDIT-ME-your-sanctioned-rmm-id"'}
+  - id: blind-spot/spoofed-sanctioned-id-rule
+    kind: blind-spot
+    quote: {source: rule, text: "and so does an attacker who copies your filter string into their own service's ImagePath"}
+    expect: no-match
+    events:
+      - {_note: "a stock AnyDesk installed to a folder named after the sanctioned prefix", ServiceName: AnyDesk, ImagePath: 'C:\ProgramData\AnyDesk-EDIT-ME-your-sanctioned-rmm-id\AnyDesk.exe'}
+  - id: near-miss/other-service
+    kind: near-miss
+    rationale: "A new service with no listed tool in its name or path"
+    expect: no-match
+    events:
+      - {ServiceName: ExampleUpdater, ImagePath: 'C:\Program Files\Example\updater.exe'}
+  - id: near-miss/cloudflared-service
+    kind: near-miss
+    rationale: "A Cloudflare Tunnel service is cloudflared-tunnel-service-install's job, not this rule's"
+    expect: no-match
+    events:
+      - {ServiceName: Cloudflared, ImagePath: 'C:\Program Files (x86)\cloudflared\cloudflared.exe'}
+  - id: near-miss/security-log-4697
+    kind: near-miss
+    rationale: "The rule reads System event 7045 only; the Security log's 4697 for the same install is out of scope"
+    expect: no-match
+    events:
+      - {EventID: 4697, ServiceName: 'ScreenConnect Client (ababcab28dcdb35c)', ImagePath: 'C:\Program Files (x86)\ScreenConnect Client (ababcab28dcdb35c)\ScreenConnect.ClientService.exe'}
+  - id: near-miss/service-state-change-7036
+    kind: near-miss
+    rationale: "A 7036 state change for an already-installed tool is a start or stop, not an install"
+    expect: no-match
+    events:
+      - {EventID: 7036, ServiceName: AnyDesk, ImagePath: 'C:\Program Files (x86)\AnyDesk\AnyDesk.exe'}
+  - id: near-miss/tool-name-without-path-separator
+    kind: near-miss
+    rationale: "The folder and binary checks need a backslash before the name, so a tool name inside another word stays quiet"
+    expect: no-match
+    events:
+      - {ServiceName: Backup Agent, ImagePath: 'C:\Program Files\NotTeamViewerBackup\agent.exe'}
+      - {ServiceName: Mesh Monitor, ImagePath: 'C:\Program Files\Mesh\notmeshagent.exe'}
