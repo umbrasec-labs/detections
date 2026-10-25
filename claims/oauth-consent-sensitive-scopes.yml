@@ -1,12 +1,13 @@
 schema: umbrasec.claims/v1
 rule: queries/kql/oauth-consent-sensitive-scopes.kql
 rule_id: null
-rule_sha256: 9d41c4bd6396bb1b35d432b35120adabd2153cc897a6cbcd5e23be0dd3583cfa
+rule_sha256: 1df3fb70007245796a0e297dc56b1a62f020251af7bf163a4a8093294b428816
 engine: kusto
 writeup: research/detecting-oauth-consent-phishing.html
-reviewed: 2026-10-23
+reviewed: 2026-10-25
 # Not executed: there is no Kusto engine in CI yet. Dynamic columns are given as
-# JSON strings, the way a CSV or JSON ingest would carry them.
+# JSON strings, the way a CSV or JSON ingest would carry them. Entra writes each
+# modifiedProperties newValue JSON-quoted (IsAdminConsent arrives as "\"True\"").
 event_defaults:
   _synthetic: true
   TimeGenerated: "2026-10-23T10:00:00Z"
@@ -21,18 +22,18 @@ claims:
     expect: match
     table: AuditLogs
     events:
-      - {_note: "user consent to Mail.Read", TargetResources: '[{"modifiedProperties": [{"displayName": "ConsentAction.Permissions", "newValue": "Scope: Mail.Read, User.Read"}, {"displayName": "ConsentContext.IsAdminConsent", "newValue": "False"}, {"displayName": "TargetId.ServicePrincipalNames", "newValue": "Example Mail Helper"}]}]'}
+      - {_note: "user consent to Mail.Read", TargetResources: '[{"modifiedProperties": [{"displayName": "ConsentAction.Permissions", "newValue": "\"Scope: Mail.Read, User.Read\""}, {"displayName": "ConsentContext.IsAdminConsent", "newValue": "\"False\""}, {"displayName": "TargetId.ServicePrincipalNames", "newValue": "\"Example Mail Helper\""}]}]'}
   - id: catches/admin-consent-branch
     kind: catches
     quote: {source: rule, text: 'IsAdminConsent == "True" is the high-severity branch (tenant-wide grant)'}
     expect: match
     table: AuditLogs
     events:
-      - {_note: "tenant-wide admin consent to a sensitive scope", TargetResources: '[{"modifiedProperties": [{"displayName": "ConsentAction.Permissions", "newValue": "Scope: Files.ReadWrite.All"}, {"displayName": "ConsentContext.IsAdminConsent", "newValue": "True"}, {"displayName": "TargetId.ServicePrincipalNames", "newValue": "Example Files Sync"}]}]'}
+      - {_note: "tenant-wide admin consent to a sensitive scope", TargetResources: '[{"modifiedProperties": [{"displayName": "ConsentAction.Permissions", "newValue": "\"Scope: Files.ReadWrite.All\""}, {"displayName": "ConsentContext.IsAdminConsent", "newValue": "\"True\""}, {"displayName": "TargetId.ServicePrincipalNames", "newValue": "\"Example Files Sync\""}]}]'}
   - id: near-miss/basic-sign-in-scope
     kind: near-miss
     rationale: "User.Read alone is not in the sensitive scope list"
     expect: no-match
     table: AuditLogs
     events:
-      - {TargetResources: '[{"modifiedProperties": [{"displayName": "ConsentAction.Permissions", "newValue": "Scope: User.Read"}, {"displayName": "ConsentContext.IsAdminConsent", "newValue": "False"}, {"displayName": "TargetId.ServicePrincipalNames", "newValue": "Example Sign-in"}]}]'}
+      - {TargetResources: '[{"modifiedProperties": [{"displayName": "ConsentAction.Permissions", "newValue": "\"Scope: User.Read\""}, {"displayName": "ConsentContext.IsAdminConsent", "newValue": "\"False\""}, {"displayName": "TargetId.ServicePrincipalNames", "newValue": "\"Example Sign-in\""}]}]'}
