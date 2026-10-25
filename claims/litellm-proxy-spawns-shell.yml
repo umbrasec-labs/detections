@@ -1,10 +1,10 @@
 schema: umbrasec.claims/v1
 rule: rules/linux/litellm-proxy-spawns-shell.yml
 rule_id: 7b3a1f02-9c5d-4e88-a1b6-2f4c7d9e0a13
-rule_sha256: 77278b25a4418279c56e127b8b66112da1b98b658ccc33b90b38cda51e17c7c0
+rule_sha256: dd309f1bae4fa4cb06cefa478ef5df3da55ad50d5a9e9f9bad831d57aab14f7d
 engine: sigma
 writeup: research/detecting-litellm-command-injection.html
-reviewed: 2026-10-23
+reviewed: 2026-10-25
 event_defaults:
   _synthetic: true
 fp_dispositions:
@@ -30,6 +30,8 @@ claims:
     quote: {source: rule, text: "Sensors often report the resolved binary, so the rule also lists versioned interpreter names"}
     expect: match
     events:
+      - {_note: "python3.7, below any LiteLLM release floor but listed by the rule", ParentImage: /usr/bin/python3.7, Image: /bin/sh}
+      - {_note: "python3.8, the floor of the early affected releases (1.74.x to 1.76.x)", ParentImage: /usr/local/bin/python3.8, Image: /bin/bash}
       - {_note: "the resolved interpreter python3.9 starts a shell", ParentImage: /usr/bin/python3.9, Image: /bin/sh}
       - {_note: "python3.10", ParentImage: /usr/bin/python3.10, Image: /bin/sh}
       - {_note: "python3.11", ParentImage: /usr/local/bin/python3.11, Image: /bin/bash}

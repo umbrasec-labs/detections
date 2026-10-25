@@ -1,10 +1,10 @@
 schema: umbrasec.claims/v1
 rule: queries/kql/app-role-assignment.kql
 rule_id: null
-rule_sha256: 3fe6270138e391e6df61ac0d2ec4b0a45bb0476db0a295ae4794121768673116
+rule_sha256: 2509413b1e557933a27ef4ef2bfad56bc36db539d502cbc6ba91ec6dc6cbc487
 engine: kusto
 writeup: research/detecting-oauth-consent-phishing.html
-reviewed: 2026-10-23
+reviewed: 2026-10-25
 # Not executed: there is no Kusto engine in CI yet. Dynamic columns are given as
 # JSON strings, the way a CSV or JSON ingest would carry them.
 event_defaults:
@@ -12,7 +12,7 @@ event_defaults:
   TimeGenerated: "2026-10-23T10:00:00Z"
   Result: success
   InitiatedBy: '{"user": {"userPrincipalName": "admin@example.com"}}'
-  TargetResources: '[{"modifiedProperties": [{"displayName": "AppRole.Value", "newValue": "Mail.ReadWrite"}, {"displayName": "ServicePrincipal.DisplayName", "newValue": "Example Mail Archiver"}]}]'
+  TargetResources: '[{"modifiedProperties": [{"displayName": "AppRole.Value", "newValue": "\"Mail.ReadWrite\""}, {"displayName": "ServicePrincipal.DisplayName", "newValue": "\"Example Mail Archiver\""}]}]'
 claims:
   - id: catches/role-assigned-to-service-principal
     kind: catches

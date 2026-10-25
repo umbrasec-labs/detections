@@ -1,12 +1,12 @@
 schema: umbrasec.claims/v1
 rule: rules/windows/kerberoasting-rc4-service-ticket.yml
 rule_id: 8f1e2c33-6a4b-4d9e-9a1f-2b7c0d5e4a10
-rule_sha256: 9da525810940fd5e697b1066866e4b27b223970da6c28a3b9102a33cb987b654
+rule_sha256: 9cd315b47f4d1969ad4ac3b6f328213d774f66b1f6d24a413f6d63cfd52c6f09
 engine: sigma
 writeup: research/detecting-kerberoasting.html
-reviewed: 2026-10-23
+reviewed: 2026-10-25
 event_defaults:
-  # A successfully issued RC4 service ticket with the flags the rule pins.
+  # A successfully issued RC4 service ticket with the flags roasting tools commonly produce.
   _synthetic: true
   EventID: 4769
   TicketEncryptionType: "0x17"
@@ -64,9 +64,10 @@ claims:
     events:
       - {ServiceName: krbtgt}
       - {_note: "upper case still filtered", ServiceName: KRBTGT}
-  - id: blind-spot/ticket-options-vary
-    kind: blind-spot
-    quote: {source: writeup, text: "The TicketOptions: '0x40810000' line tightens precision but will miss tools that vary their flags."}
-    expect: no-match
+  - id: catches/any-ticket-options
+    kind: catches
+    quote: {source: rule, text: "OFF by default: roasting tools vary this flag"}
+    expect: match
     events:
       - {_note: "an RC4 ticket with different option flags", ServiceName: svc-sql, TicketOptions: "0x40800000"}
+      - {_note: "a sensor that does not log TicketOptions at all", ServiceName: svc-sql, TicketOptions: null}

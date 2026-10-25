@@ -1,10 +1,10 @@
 schema: umbrasec.claims/v1
 rule: rules/windows/kerberoasting-honeypot-spn.yml
 rule_id: 3e1f6d99-4a77-4123-dd5c-8f0a1b2c3d44
-rule_sha256: f1a5e3bfe05c760ce51bee90af323c4d658807d43b494011a1df1cac45b645fc
+rule_sha256: a87fc07d2434f22a3fe0c46fc22aa425b2798a79e796938cd28251efa426bff3
 engine: sigma
 writeup: research/detecting-kerberoasting.html
-reviewed: 2026-10-23
+reviewed: 2026-10-25
 event_defaults:
   _synthetic: true
   EventID: 4769

@@ -1,10 +1,10 @@
 schema: umbrasec.claims/v1
 rule: rules/windows/kerberoasting-spn-fanout.yml
 rule_id: 1c9d4b77-2e55-4f01-bb3a-6d8e9f0a1b22
-rule_sha256: 3b9045013ab0033813b87caffc70bd24ea6bd0ae223168db8baba827ecb5a665
+rule_sha256: f7634a9cae940b6e7d1457278ec2ccf1da334a63b303040aa177e7a98cf16628
 engine: sigma
 writeup: research/detecting-kerberoasting.html
-reviewed: 2026-10-23
+reviewed: 2026-10-25
 # The rule is a value_count correlation, so every claim runs in sequence mode:
 # all events go into one table and expect applies to the set.
 event_defaults:

@@ -1,10 +1,10 @@
 schema: umbrasec.claims/v1
 rule: rules/web/litellm-stealer-exfil.yml
 rule_id: 6f6f10d8-c46a-46dc-89ad-c5b9a800ee72
-rule_sha256: 65e9502df72c09ad539304ad756eb41a324c5a7cdb7332c16b5fa20cc454bea7
+rule_sha256: 2925f112ddbb8c6d48bc849bfcf7f2344f882df4c24ba658941b7e06410c8924
 engine: sigma
 writeup: null
-reviewed: 2026-10-23
+reviewed: 2026-10-25
 event_defaults:
   _synthetic: true
 fp_dispositions:
@@ -38,6 +38,12 @@ claims:
     events:
       - {_note: "only the full URL is logged", c-uri: "http://litellm.dev/healthcheck"}
       - {_note: "only the full URL is logged, www host", c-uri: "http://www.litellm.dev/healthcheck"}
+      - {_note: "only the full URL is logged, with a port", c-uri: "http://litellm.dev:8080/healthcheck"}
+      - {_note: "only the full URL is logged, www host with a port", c-uri: "https://www.litellm.dev:443/healthcheck"}
+      - {_note: "only the full URL is logged, trailing-dot host", c-uri: "http://litellm.dev./healthcheck"}
+      - {_note: "only the full URL is logged, trailing-dot www host with a port", c-uri: "https://www.litellm.dev.:443/healthcheck"}
+      - {_note: "a URL with no path", c-uri: "http://litellm.dev"}
+      - {_note: "a www URL with no path and a trailing dot", c-uri: "https://www.litellm.dev."}
   - id: catches/host-with-port
     kind: catches
     quote: {source: rule, text: "Hosts logged with a port or with a trailing dot are matched."}
@@ -87,3 +93,13 @@ claims:
     expect: no-match
     events:
       - {cs-host: litellm.dev.evil.example}
+  - id: near-miss/litellm-dev-as-a-label-prefix-in-uri
+    kind: near-miss
+    rationale: "The URI fallback is anchored at the host boundary (a slash or a colon after the name), so a full URL on a domain that only starts with litellm.dev stays quiet"
+    expect: no-match
+    events:
+      - {c-uri: "http://litellm.dev.evil.example/healthcheck"}
+      - {c-uri: "https://www.litellm.dev.evil.example/healthcheck"}
+      - {c-uri: "http://litellm.development.example/x"}
+      - {c-uri: "http://notlitellm.dev/healthcheck"}
+      - {c-uri: "http://litellm.dev.evil.example"}
