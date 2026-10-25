@@ -1,0 +1,152 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/archiver-admin-share-collection.yml
+rule_id: 11a8a147-5126-491c-a911-28bcd9ecc2e5
+rule_sha256: c976aed121d035b7974368283d136f64b6d00516a080118d0a740f8a2eb14271
+engine: sigma
+writeup: research/safepay-australian-smb.html
+reviewed: 2026-10-25
+event_defaults:
+  _synthetic: true
+fp_dispositions: []
+claims:
+  - id: catches/winrar-users-folder-from-c-share
+    kind: catches
+    quote: {source: rule, text: 'WinRAR archived \\[host]\C$\Users\ into a local .rar'}
+    expect: match
+    events:
+      - {_note: "the SafePay shape without its exclusion list", Image: 'C:\Program Files\WinRAR\WinRAR.exe', CommandLine: 'WinRAR.exe a out.rar \\host01\C$\Users\'}
+  - id: catches/update-and-move-commands
+    kind: catches
+    quote: {source: rule, text: 'the "a" or "u" command, or the RAR "m" and "mf" move commands'}
+    expect: match
+    events:
+      - {_note: "u, update an archive", Image: 'C:\Program Files\WinRAR\Rar.exe', CommandLine: 'Rar.exe u out.rar \\host01\C$\Users\'}
+      - {_note: "m, move files into an archive", Image: 'C:\Program Files\WinRAR\Rar.exe', CommandLine: 'Rar.exe m out.rar \\host01\C$\Users\'}
+      - {_note: "mf, move files only", Image: 'C:\Program Files\WinRAR\Rar.exe', CommandLine: 'Rar.exe mf out.rar \\host01\C$\Users\'}
+      - {_note: "7-Zip u", Image: 'C:\Program Files\7-Zip\7z.exe', CommandLine: '7z.exe u out.7z \\host01\C$\Users\'}
+  - id: catches/drive-shares-c-to-f
+    kind: catches
+    quote: {source: rule, text: "with a C$, D$, E$ or F$ drive administrative share"}
+    expect: match
+    events:
+      - {_note: "D$", Image: 'C:\Program Files\7-Zip\7z.exe', CommandLine: '7z.exe a out.7z \\host01\D$\data'}
+      - {_note: "E$", Image: 'C:\Program Files\7-Zip\7z.exe', CommandLine: '7z.exe a out.7z \\host01\E$\data'}
+      - {_note: "F$", Image: 'C:\Program Files\7-Zip\7z.exe', CommandLine: '7z.exe a out.7z \\host01\F$\data'}
+      - {_note: "lower-case share letter", Image: 'C:\Program Files\7-Zip\7z.exe', CommandLine: '7z.exe a out.7z \\host01\c$\data'}
+  - id: catches/seven-zip-variants
+    kind: catches
+    quote: {source: rule, text: "7-Zip is included because the March 2026 joint ACSC, NCSC NZ and CERT Tonga advisory records INC Ransom using it to compress data before exfiltration"}
+    expect: match
+    events:
+      - {_note: "7za.exe", Image: 'C:\Tools\7za.exe', CommandLine: '7za.exe a out.7z \\host01\C$\Users\'}
+      - {_note: "7zr.exe", Image: 'C:\Tools\7zr.exe', CommandLine: '7zr.exe a out.7z \\host01\C$\Users\'}
+      - {_note: "7zG.exe with the source on its command line", Image: 'C:\Program Files\7-Zip\7zG.exe', CommandLine: '7zG.exe a out.7z \\host01\C$\Users\'}
+  - id: catches/renamed-seven-zip
+    kind: catches
+    quote: {source: rule, text: "renamed 7z.exe, 7za.exe, 7zr.exe and 7zG.exe are matched on OriginalFilename"}
+    expect: match
+    events:
+      - {_note: "renamed 7z.exe", Image: 'C:\ProgramData\z.exe', OriginalFileName: 7z.exe, CommandLine: 'z.exe a out.7z \\host01\C$\Users\'}
+      - {_note: "renamed 7za.exe", Image: 'C:\ProgramData\z.exe', OriginalFileName: 7za.exe, CommandLine: 'z.exe a out.7z \\host01\C$\Users\'}
+      - {_note: "renamed 7zr.exe", Image: 'C:\ProgramData\z.exe', OriginalFileName: 7zr.exe, CommandLine: 'z.exe a out.7z \\host01\C$\Users\'}
+      - {_note: "renamed 7zG.exe; the rule lists 7zg.exe and equality is case-insensitive", Image: 'C:\ProgramData\z.exe', OriginalFileName: 7zG.exe, CommandLine: 'z.exe a out.7z \\host01\C$\Users\'}
+  - id: catches/writeup-summary
+    kind: catches
+    quote: {source: writeup, text: "The rule fires when WinRAR, RAR or 7-Zip creates or adds to an archive with a C$ to F$ admin share on the command line."}
+    expect: match
+    events:
+      - {_note: "WinRAR adds to an archive from a D$ share", Image: 'C:\Program Files\WinRAR\WinRAR.exe', CommandLine: 'WinRAR.exe a out.rar \\host02\D$\finance'}
+  - id: false-positive/admin-backup-script
+    kind: false-positive
+    quote: {source: rule, text: "An administrator or backup script archiving files from another host over its C$ or D$ share"}
+    expect: match
+    events:
+      - {_note: "the bullet's own example", Image: 'C:\Program Files\7-Zip\7z.exe', CommandLine: '7z a logs.7z \\srv01\C$\inetpub\logs'}
+      - {_note: "a user-profile backup before a rebuild", Image: 'C:\Program Files\7-Zip\7z.exe', CommandLine: '7z a profile.7z \\ws01\C$\Users\user1'}
+  - id: false-positive/incident-response-triage
+    kind: false-positive
+    quote: {source: rule, text: "Incident responders archiving triage data from a remote machine's admin share with 7-Zip or Rar"}
+    expect: match
+    events:
+      - {_note: "responder collection with 7-Zip", Image: 'C:\IR\7za.exe', CommandLine: '7za a triage.7z \\ws01\C$\Windows\Prefetch'}
+      - {_note: "responder collection with Rar", Image: 'C:\IR\Rar.exe', CommandLine: 'Rar a triage.rar \\ws01\C$\Windows\Prefetch'}
+  - id: false-positive/extract-into-folder-with-command-word
+    kind: false-positive
+    quote: {source: rule, text: 'Extracting (7z x) an archive that sits on a C$ share into a folder whose name contains a standalone "a", "u", "m" or "mf"'}
+    expect: match
+    events:
+      - {_note: "the bullet's own folder name", Image: 'C:\Program Files\7-Zip\7z.exe', CommandLine: '7z x \\srv01\C$\data\in.7z "-oC:\Plan a review"'}
+  - id: blind-spot/mapped-drive
+    kind: blind-spot
+    quote: {source: rule, text: "archiving a mapped drive letter"}
+    expect: no-match
+    events:
+      - {_note: "the remote disk mapped as Z:", Image: 'C:\Program Files\WinRAR\WinRAR.exe', CommandLine: 'WinRAR.exe a out.rar Z:\Users\'}
+  - id: blind-spot/named-share
+    kind: blind-spot
+    quote: {source: rule, text: 'a named share (\\fileserver\finance)'}
+    expect: no-match
+    events:
+      - {Image: 'C:\Program Files\WinRAR\WinRAR.exe', CommandLine: 'WinRAR.exe a out.rar \\fileserver\finance'}
+  - id: blind-spot/admin-share-beyond-f
+    kind: blind-spot
+    quote: {source: rule, text: "an admin share for a drive letter other than C to F"}
+    expect: no-match
+    events:
+      - {_note: "G$", Image: 'C:\Program Files\WinRAR\WinRAR.exe', CommandLine: 'WinRAR.exe a out.rar \\host01\G$\data'}
+  - id: blind-spot/local-data
+    kind: blind-spot
+    quote: {source: rule, text: "or local data is missed"}
+    expect: no-match
+    events:
+      - {Image: 'C:\Program Files\WinRAR\WinRAR.exe', CommandLine: 'WinRAR.exe a out.rar C:\Users\'}
+  - id: blind-spot/list-file
+    kind: blind-spot
+    quote: {source: rule, text: "a source path passed in a list file (@list.txt) instead of on the command line"}
+    expect: no-match
+    events:
+      - {_note: "the share path is inside list.txt", Image: 'C:\Program Files\WinRAR\WinRAR.exe', CommandLine: 'WinRAR.exe a out.rar @list.txt'}
+  - id: blind-spot/quoted-command-letter
+    kind: blind-spot
+    quote: {source: rule, text: 'a command letter written in quotes ("a"), is missed'}
+    expect: no-match
+    events:
+      - {Image: 'C:\Program Files\WinRAR\WinRAR.exe', CommandLine: 'WinRAR.exe "a" out.rar \\host01\C$\Users\'}
+  - id: blind-spot/renamed-winrar
+    kind: blind-spot
+    quote: {source: rule, text: "a renamed WinRAR.exe is missed because WinRAR.exe is matched by image name only"}
+    expect: no-match
+    events:
+      - {_note: "renamed WinRAR.exe; its PE name is not on the rule's list", Image: 'C:\ProgramData\w.exe', OriginalFileName: WinRAR.exe, CommandLine: 'w.exe a out.rar \\host01\C$\Users\'}
+  - id: blind-spot/other-archivers
+    kind: blind-spot
+    quote: {source: rule, text: "other archivers such as tar.exe or PowerShell Compress-Archive are out of scope"}
+    expect: no-match
+    events:
+      - {_note: "tar.exe", Image: 'C:\Windows\System32\tar.exe', CommandLine: 'tar.exe -c -f out.tar \\host01\C$\Users'}
+      - {_note: "Compress-Archive", Image: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe', CommandLine: 'powershell Compress-Archive \\host01\C$\Users out.zip'}
+  - id: blind-spot/seven-zip-gui-menu
+    kind: blind-spot
+    quote: {source: rule, text: "7zG.exe runs started from the Explorer menu may not carry the source path on the command line"}
+    expect: no-match
+    events:
+      - {_note: "a menu run with no source path on its command line (shape assumed)", Image: 'C:\Program Files\7-Zip\7zG.exe', CommandLine: '7zG.exe a out.7z'}
+  - id: near-miss/extract-to-plain-folder
+    kind: near-miss
+    rationale: "Extracting or listing an archive on a C$ share, with no command word in the paths"
+    expect: no-match
+    events:
+      - {Image: 'C:\Program Files\7-Zip\7z.exe', CommandLine: '7z x \\srv01\C$\data\in.7z -oC:\out'}
+      - {Image: 'C:\Program Files\7-Zip\7z.exe', CommandLine: '7z l \\srv01\C$\data\in.7z'}
+  - id: near-miss/other-tool-on-share
+    kind: near-miss
+    rationale: "A copy tool reading an admin share is not an archiver"
+    expect: no-match
+    events:
+      - {Image: 'C:\Windows\System32\robocopy.exe', CommandLine: 'robocopy \\host01\C$\Users C:\a /e'}
+  - id: catches/renamed-rar-by-description
+    kind: catches
+    quote: {source: rule, text: 'a renamed binary with the FileDescription "Command line RAR", which SigmaHQ''s Rar.exe rules use, is matched on that description'}
+    expect: match
+    events:
+      - {_note: "a renamed binary carrying the description the rule lists", Image: 'C:\ProgramData\r.exe', Description: Command line RAR, CommandLine: 'r.exe a out.rar \\host01\C$\Users\'}

@@ -1,10 +1,10 @@
 schema: umbrasec.claims/v1
 rule: rules/windows/masquerading-svchost-outside-system32.yml
 rule_id: 1991446b-a433-4c51-97c8-ab493c79afcd
-rule_sha256: 4e18c3db72ff750ec3b3ca945a9bf1069f032ea4b940c40520deb7c596c0a8a5
+rule_sha256: e6f2909c7e4ab043bb0cc03cebe581655d591c46e677a61e02461533cc2b4406
 engine: sigma
 writeup: research/n-able-ncentral-msp-supply-chain.html
-reviewed: 2026-10-23
+reviewed: 2026-10-25
 event_defaults:
   _synthetic: true
 fp_dispositions: []

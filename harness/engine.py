@@ -15,11 +15,17 @@ import sqlite3
 from sigma.backends.sqlite import sqliteBackend
 from sigma.collection import SigmaCollection
 from sigma.correlations import SigmaCorrelationRule
-from sigma.modifiers import SigmaContainsModifier, SigmaEndswithModifier, SigmaStartswithModifier
+from sigma.modifiers import (
+    SigmaAllModifier,
+    SigmaContainsModifier,
+    SigmaEndswithModifier,
+    SigmaStartswithModifier,
+)
 from sigma.rule import SigmaDetection
 from sigma.types import SigmaNumber, SigmaString
 
-ALLOWED_MODIFIERS = {SigmaContainsModifier, SigmaEndswithModifier, SigmaStartswithModifier}
+# all only switches a value list from OR to AND; self-test 17 pins it.
+ALLOWED_MODIFIERS = {SigmaAllModifier, SigmaContainsModifier, SigmaEndswithModifier, SigmaStartswithModifier}
 ALLOWED_CORRELATIONS = {"value_count"}  # add event_count only together with a self-test
 DEFAULT_TS = "2026-01-01T00:00:00Z"
 SEMANTICS = (

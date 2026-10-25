@@ -337,7 +337,7 @@ class HarnessTests(unittest.TestCase):
         with self.assertRaises(engine.Unsupported):
             engine.compile_rule(yaml.safe_dump(rule))
         # The backend would compile these, with string values, so only the modifier allowlist stops them.
-        for field, value in (("cs-host|windash", "-x"), ("cs-host|contains|all", ["a", "b"]), ("cs-host|cased", "Example")):
+        for field, value in (("cs-host|windash", "-x"), ("cs-host|cased", "Example")):
             other = toy_rule(detection={"selection": {field: value}, "condition": "selection"})
             with self.subTest(field=field), self.assertRaisesRegex(engine.Unsupported, "modifier"):
                 engine.compile_rule(yaml.safe_dump(other))
@@ -574,6 +574,32 @@ class HarnessTests(unittest.TestCase):
         rc, err, _ = run("other==1.0\n" + waiver.replace("fix", "gone"), cooldown=2)
         self.assertEqual(rc, 1)
         self.assertIn("allow-young gone==2.0: gone is not pinned", err)
+
+    def test_17_all_modifier_needs_every_value(self):
+        # all only changes how a value list is joined, from OR to AND. Pin that, with
+        # and without contains, and inside a list of maps that is itself an OR.
+        rule = toy_rule(detection={
+            "selection_img": [{"Image|endswith": "\\tool.exe"}, {"OriginalFileName": "tool.exe"}],
+            "selection_cli": [
+                {"CommandLine|contains|all": ["alpha", "beta"]},
+                {"CommandLine|contains|all": ["gamma"], "CommandLine|contains": [" one", " two"]},
+            ],
+            "condition": "all of selection_*",
+        })
+        sql, fields, numeric, _ = engine.compile_rule(yaml.safe_dump(rule))
+        self.assertEqual(numeric, set())
+        img = {"Image": "C:\\x\\tool.exe"}
+        self.assertTrue(engine.evaluate(sql, fields, [{**img, "CommandLine": "tool alpha beta"}]))
+        self.assertTrue(engine.evaluate(sql, fields, [{**img, "CommandLine": "tool BETA x ALPHA"}]))
+        self.assertFalse(engine.evaluate(sql, fields, [{**img, "CommandLine": "tool alpha"}]))
+        self.assertFalse(engine.evaluate(sql, fields, [{**img, "CommandLine": "tool beta"}]))
+        self.assertTrue(engine.evaluate(sql, fields, [{"OriginalFileName": "TOOL.EXE", "CommandLine": "gamma two"}]))
+        self.assertFalse(engine.evaluate(sql, fields, [{**img, "CommandLine": "gamma"}]))
+        self.assertFalse(engine.evaluate(sql, fields, [{"Image": "C:\\x\\other.exe", "CommandLine": "alpha beta"}]))
+        eq = toy_rule(detection={"selection": {"cs-host|all": ["example.test", "EXAMPLE.TEST"]}, "condition": "selection"})
+        sql, fields, _, _ = engine.compile_rule(yaml.safe_dump(eq))
+        self.assertTrue(engine.evaluate(sql, fields, [{"cs-host": "example.test"}]))
+        self.assertFalse(engine.evaluate(sql, fields, [{"cs-host": "example.testx"}]))
 
 
 if __name__ == "__main__":

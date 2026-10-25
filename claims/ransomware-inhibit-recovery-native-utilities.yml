@@ -1,0 +1,167 @@
+schema: umbrasec.claims/v1
+rule: rules/windows/ransomware-inhibit-recovery-native-utilities.yml
+rule_id: b82fbb2c-3738-47c8-a238-8c63116ccf5a
+rule_sha256: 9680f84ff72cecdc0602a73c139ba7a4e8f0ddf86133863ab258812e10006524
+engine: sigma
+writeup: research/safepay-australian-smb.html
+reviewed: 2026-10-25
+event_defaults:
+  _synthetic: true
+fp_dispositions: []
+claims:
+  - id: catches/vssadmin-delete-shadows
+    kind: catches
+    quote: {source: rule, text: "vssadmin or wmic deleting Volume Shadow Copies"}
+    expect: match
+    events:
+      - {_note: "the indicator tokens only", Image: 'C:\Windows\System32\vssadmin.exe', CommandLine: "vssadmin delete shadows"}
+      - {_note: "mixed case; contains is case-insensitive", Image: 'C:\Windows\System32\VSSADMIN.EXE', CommandLine: "VSSADMIN Delete Shadows"}
+  - id: catches/wmic-shadowcopy-delete
+    kind: catches
+    quote: {source: rule, text: "vssadmin or wmic deleting Volume Shadow Copies"}
+    expect: match
+    events:
+      - {_note: "the indicator tokens only", Image: 'C:\Windows\System32\wbem\WMIC.exe', CommandLine: "wmic shadowcopy delete"}
+  - id: catches/wbadmin-delete-catalog
+    kind: catches
+    quote: {source: rule, text: "wbadmin deleting the local backup catalog"}
+    expect: match
+    events:
+      - {_note: "the indicator tokens only", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete catalog"}
+  - id: catches/bcdedit-ignore-boot-failures
+    kind: catches
+    quote: {source: rule, text: "bcdedit telling the boot loader to ignore boot failures"}
+    expect: match
+    events:
+      - {_note: "bootstatuspolicy set to ignore all failures", Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: "bcdedit /set {default} bootstatuspolicy ignoreallfailures"}
+  - id: catches/bcdedit-recovery-disabled
+    kind: catches
+    quote: {source: rule, text: "or to disable automatic recovery, either of which stops Windows failing over to recovery after a failed boot"}
+    expect: match
+    events:
+      - {_note: "recoveryenabled set to no", Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: "bcdedit /set {default} recoveryenabled no"}
+  - id: catches/bcdedit-spacing-varies
+    kind: catches
+    quote: {source: rule, text: 'SafePay command as "bcdedit / set{default}", so spacing varies.'}
+    expect: match
+    events:
+      - {_note: "the spacing Acronis prints, bootstatuspolicy form", Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: "bcdedit / set{default} bootstatuspolicy ignoreallfailures"}
+      - {_note: "the spacing Acronis prints, recoveryenabled form", Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: "bcdedit / set{default} recoveryenabled no"}
+  - id: catches/bcdedit-value-off
+    kind: catches
+    quote: {source: rule, text: "Microsoft's Azure image steps write the value as Off, and a quoted"}
+    expect: match
+    events:
+      - {_note: "Off instead of no", Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: 'bcdedit /set "{default}" recoveryenabled Off'}
+  - id: catches/bcdedit-quoted-value
+    kind: catches
+    quote: {source: rule, text: "value has a quote before it instead of a space."}
+    expect: match
+    events:
+      - {_note: "quoted No", Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: 'bcdedit /set {default} recoveryenabled "No"'}
+      - {_note: "quoted Off", Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: 'bcdedit /set {default} recoveryenabled "Off"'}
+  - id: catches/renamed-by-original-file-name
+    kind: catches
+    quote: {source: rule, text: "or by OriginalFileName so renamed copies are caught"}
+    expect: match
+    events:
+      - {_note: "renamed vssadmin", Image: 'C:\Users\Public\v.exe', OriginalFileName: VSSADMIN.EXE, CommandLine: "v.exe delete shadows"}
+      - {_note: "renamed wmic", Image: 'C:\Users\Public\w.exe', OriginalFileName: wmic.exe, CommandLine: "w.exe shadowcopy delete"}
+      - {_note: "renamed wbadmin", Image: 'C:\Users\Public\b.exe', OriginalFileName: WBADMIN.EXE, CommandLine: "b.exe delete catalog"}
+      - {_note: "renamed bcdedit", Image: 'C:\Users\Public\c.exe', OriginalFileName: bcdedit.exe, CommandLine: "c.exe /set {default} recoveryenabled no"}
+  - id: excluded/parent-shell
+    kind: excluded
+    quote: {source: rule, text: "so the parent shell that launches it does not fire a second time."}
+    expect: no-match
+    events:
+      - {_note: "the cmd.exe that launched vssadmin carries the same words", Image: 'C:\Windows\System32\cmd.exe', OriginalFileName: Cmd.Exe, CommandLine: "cmd.exe /c vssadmin delete shadows"}
+      - {_note: "the cmd.exe that launched bcdedit", Image: 'C:\Windows\System32\cmd.exe', OriginalFileName: Cmd.Exe, CommandLine: "cmd.exe /c bcdedit /set {default} recoveryenabled no"}
+  - id: false-positive/admin-oldest-snapshot
+    kind: false-positive
+    quote: {source: rule, text: "An administrator running vssadmin delete shadows /for=<volume> /oldest"}
+    expect: match
+    events:
+      - {_note: "an administrator removing the oldest snapshot of one volume", Image: 'C:\Windows\System32\vssadmin.exe', CommandLine: "vssadmin delete shadows /for=C: /oldest"}
+  - id: false-positive/corrupt-catalog
+    kind: false-positive
+    quote: {source: rule, text: "An administrator running wbadmin delete catalog because the backup catalog is corrupted"}
+    expect: match
+    events:
+      - {_note: "an administrator clearing a corrupted catalog", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete catalog"}
+  - id: false-positive/backup-agent-cleanup
+    kind: false-positive
+    quote: {source: rule, text: "Backup or imaging software whose agent runs vssadmin delete shadows to clean up its own snapshots"}
+    expect: match
+    events:
+      - {_note: "a backup agent removes the snapshot it made; only ParentImage tells it apart", ParentImage: 'C:\Program Files\ExampleBackup\agent.exe', Image: 'C:\Windows\System32\vssadmin.exe', CommandLine: "vssadmin delete shadows /for=D: /oldest"}
+  - id: false-positive/vm-image-preparation
+    kind: false-positive
+    quote: {source: rule, text: "VM image preparation before an Azure upload or migration"}
+    expect: match
+    events:
+      - {_note: "the recoveryenabled step as the bullet writes it", Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: 'bcdedit /set "{default}" recoveryenabled Off'}
+      - {_note: "the bootstatuspolicy step as the bullet writes it", Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: 'bcdedit /set "{default}" bootstatuspolicy IgnoreAllFailures'}
+  - id: blind-spot/vss-service-stopped
+    kind: blind-spot
+    quote: {source: rule, text: "Deleting shadow copies through the VSS API or by stopping the VSS service creates no matching process"}
+    expect: no-match
+    events:
+      - {_note: "the service is stopped; no utility with delete arguments runs", Image: 'C:\Windows\System32\net.exe', CommandLine: "net stop vss"}
+  - id: blind-spot/powershell-win32-shadowcopy
+    kind: blind-spot
+    quote: {source: rule, text: "PowerShell Win32_ShadowCopy deletion"}
+    expect: no-match
+    events:
+      - {_note: "the class name and a delete token only, not a working command", Image: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe', CommandLine: "powershell Win32_ShadowCopy Delete"}
+  - id: blind-spot/diskshadow-script
+    kind: blind-spot
+    quote: {source: rule, text: "diskshadow script mode"}
+    expect: no-match
+    events:
+      - {_note: "the deletion is inside the script file, not on the command line", Image: 'C:\Windows\System32\diskshadow.exe', CommandLine: "diskshadow /s s.txt"}
+  - id: blind-spot/resize-shadowstorage
+    kind: blind-spot
+    quote: {source: rule, text: "vssadmin resize shadowstorage"}
+    expect: no-match
+    events:
+      - {_note: "shrinking the storage area; no delete token", Image: 'C:\Windows\System32\vssadmin.exe', CommandLine: "vssadmin resize shadowstorage /for=C: /on=C: /maxsize=1GB"}
+  - id: blind-spot/reagentc-disable
+    kind: blind-spot
+    quote: {source: rule, text: "reagentc /disable"}
+    expect: no-match
+    events:
+      - {Image: 'C:\Windows\System32\ReAgentc.exe', CommandLine: "reagentc /disable"}
+  - id: blind-spot/wbadmin-delete-backup
+    kind: blind-spot
+    quote: {source: rule, text: "wbadmin delete backup or systemstatebackup"}
+    expect: no-match
+    events:
+      - {_note: "delete backup, not delete catalog", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete backup"}
+      - {_note: "delete systemstatebackup, not delete catalog", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete systemstatebackup"}
+  - id: blind-spot/vss-api-writeup
+    kind: blind-spot
+    quote: {source: writeup, text: "It reads command lines only, so shadow copies removed through the VSS API or by stopping the service get past it."}
+    expect: no-match
+    events:
+      - {_note: "the service stopped with sc; no utility with delete arguments runs", Image: 'C:\Windows\System32\sc.exe', CommandLine: "sc stop vss"}
+  - id: near-miss/list-shadows
+    kind: near-miss
+    rationale: "Listing shadow copies deletes nothing"
+    expect: no-match
+    events:
+      - {Image: 'C:\Windows\System32\vssadmin.exe', CommandLine: "vssadmin list shadows"}
+      - {Image: 'C:\Windows\System32\wbem\WMIC.exe', CommandLine: "wmic shadowcopy list brief"}
+  - id: near-miss/recovery-enabled-yes
+    kind: near-miss
+    rationale: "Turning automatic recovery on, or reading the boot store, is the opposite of the indicator"
+    expect: no-match
+    events:
+      - {Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: "bcdedit /set {default} recoveryenabled yes"}
+      - {Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: "bcdedit /enum"}
+      - {Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: "bcdedit /set {default} bootstatuspolicy displayallfailures"}
+  - id: catches/delete-shadowstorage-substring
+    kind: catches
+    quote: {source: rule, text: 'The vssadmin check matches "delete" and "shadows" as substrings, so a vssadmin delete shadowstorage command line also fires.'}
+    expect: match
+    events:
+      - {_note: "delete shadowstorage contains both delete and shadows", Image: 'C:\Windows\System32\vssadmin.exe', CommandLine: "vssadmin delete shadowstorage /for=D:"}

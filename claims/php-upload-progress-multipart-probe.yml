@@ -1,0 +1,122 @@
+schema: umbrasec.claims/v1
+rule: rules/web/php-upload-progress-multipart-probe.yml
+rule_id: 6e2c0b4a-2f1d-4c7e-9a3b-1f9d5c84e2a7
+rule_sha256: ffe8e85f987820ac383ad3c643efd055f77f0099734a8d7a747718ab96ef91ff
+engine: sigma
+writeup: research/php2shell-hallucinated-exploits.html
+reviewed: 2026-10-25
+event_defaults:
+  _synthetic: true
+  cs-content-type: "multipart/form-data; boundary=b1"
+fp_dispositions: []
+claims:
+  - id: catches/upload-progress-field
+    kind: catches
+    quote: {source: rule, text: "A multipart/form-data request carrying the PHP_SESSION_UPLOAD_PROGRESS field name, PHP's default session.upload_progress.name."}
+    expect: match
+    events:
+      - {_note: "the field name in a part header, nothing else", cs-request-body: 'name="PHP_SESSION_UPLOAD_PROGRESS"'}
+  - id: catches/amazon-guidance-form-upload
+    kind: catches
+    quote: {source: rule, text: "Amazon's php2shell guidance is to look for POST requests with this string in form uploads"}
+    expect: match
+    events:
+      - {_note: "a POST form upload: the field part, then an ordinary file part", cs-method: POST, cs-request-body: 'name="PHP_SESSION_UPLOAD_PROGRESS" name="file"; filename="a.txt"'}
+  - id: catches/content-type-case-and-parameters
+    kind: catches
+    quote: {source: writeup, text: "The instinct is to alert on multipart requests containing PHP_SESSION_UPLOAD_PROGRESS."}
+    expect: match
+    events:
+      - {_note: "upper-case media type with a boundary parameter", cs-content-type: "Multipart/Form-Data; boundary=b2", cs-request-body: 'name="PHP_SESSION_UPLOAD_PROGRESS"'}
+      - {_note: "lower-case field name; contains is case-insensitive", cs-request-body: 'name="php_session_upload_progress"'}
+  - id: catches/field-after-other-fields
+    kind: catches
+    quote: {source: rule, text: "PHP accepts the field after any number of other form fields"}
+    expect: match
+    events:
+      - {_note: "the field after two ordinary fields; the whole body was captured", cs-request-body: 'name="a" name="b" name="PHP_SESSION_UPLOAD_PROGRESS"'}
+  - id: false-positive/scanner
+    kind: false-positive
+    quote: {source: rule, text: "Benign vulnerability scanners probing after public disclosure"}
+    expect: match
+    events:
+      - {_note: "a scanner's probe carries the same field name as everything else", cs-request-body: 'name="PHP_SESSION_UPLOAD_PROGRESS"'}
+  - id: false-positive/2018-technique
+    kind: false-positive
+    quote: {source: rule, text: "The unrelated 2018 session-poisoning technique, which is not this CVE"}
+    expect: match
+    events:
+      - {_note: "the field name is all the 2018 technique shares with this rule; no payload is modelled", cs-request-body: 'name="PHP_SESSION_UPLOAD_PROGRESS"'}
+  - id: false-positive/fake-poc
+    kind: false-positive
+    quote: {source: rule, text: "Fake or non-functional PoC traffic"}
+    expect: match
+    events:
+      - {_note: "a non-functional PoC sends the field name and nothing that works", cs-request-body: 'name="PHP_SESSION_UPLOAD_PROGRESS"'}
+  - id: false-positive/legitimate-upload-progress
+    kind: false-positive
+    quote: {source: rule, text: "Any application that legitimately uses session upload progress"}
+    expect: match
+    events:
+      - {_note: "an app's upload form sends the progress key with its file part", cs-request-body: 'name="PHP_SESSION_UPLOAD_PROGRESS" name="upload"; filename="report.pdf"'}
+  - id: false-positive/file-content-contains-string
+    kind: false-positive
+    quote: {source: rule, text: "Uploaded files whose content contains the string, such as php.ini"}
+    expect: match
+    events:
+      - {_note: "an uploaded php.ini whose default line names the field", cs-request-body: 'name="cfg"; filename="php.ini" session.upload_progress.name = "PHP_SESSION_UPLOAD_PROGRESS"'}
+      - {_note: "an uploaded detection rule that quotes the string", cs-request-body: "name=\"doc\"; filename=\"rule.yml\" cs-request-body|contains: 'PHP_SESSION_UPLOAD_PROGRESS'"}
+  - id: blind-spot/renamed-progress-name
+    kind: blind-spot
+    quote: {source: rule, text: "A host that renames session.upload_progress.name is not covered."}
+    expect: no-match
+    events:
+      - {_note: "the host set session.upload_progress.name to another key", cs-request-body: 'name="custom_progress_key"'}
+  - id: blind-spot/paths-without-upload-progress
+    kind: blind-spot
+    quote: {source: rule, text: "CVE-2026-109619's PHP 8.5 fatal-error-backtrace path (the basis of the confirmed mod_php RCE) and its INI-diagnostic path do not use upload progress and are not covered."}
+    expect: no-match
+    events:
+      - {_note: "a multipart request with no upload-progress field; nothing of those paths is modelled", cs-request-body: 'name="a"'}
+  - id: blind-spot/oom-bug-without-field
+    kind: blind-spot
+    quote: {source: rule, text: "CVE-2026-109618 (GHSA-w8hw-w9fx-j79w) is an out-of-memory bug, demonstrated via multipart parsing, that does not need this field."}
+    expect: no-match
+    events:
+      - {_note: "a multipart body of ordinary fields only; no parser stress is modelled", cs-request-body: 'name="a" name="b" name="c"'}
+  - id: blind-spot/body-inspection-limit
+    kind: blind-spot
+    quote: {source: rule, text: "a large leading field can push it past a WAF or proxy body inspection or logging limit"}
+    expect: no-match
+    events:
+      - {_note: "the WAF logged only the first part of the body; the field came later and was cut off", cs-request-body: 'name="pad"'}
+  - id: blind-spot/request-line-only-logs
+    kind: blind-spot
+    quote: {source: writeup, text: "Webserver access logs that record only the request line will not see it."}
+    expect: no-match
+    events:
+      - {_note: "an access log with no body field at all", cs-method: POST, cs-uri-stem: /upload.php, cs-request-body: null}
+  - id: blind-spot/unmapped-body-field
+    kind: blind-spot
+    quote: {source: rule, text: "map them to your WAF or proxy body and Content-Type fields in the conversion pipeline, or the query will never match."}
+    expect: no-match
+    events:
+      - {_note: "the WAF's own field names, not mapped to the rule's fields", cs-content-type: null, waf_content_type: "multipart/form-data; boundary=b1", waf_body: 'name="PHP_SESSION_UPLOAD_PROGRESS"'}
+  - id: near-miss/urlencoded-form
+    kind: near-miss
+    rationale: "Upload progress only applies to multipart uploads; a urlencoded form carrying the same name stays quiet"
+    expect: no-match
+    events:
+      - {cs-content-type: application/x-www-form-urlencoded, cs-request-body: "PHP_SESSION_UPLOAD_PROGRESS=1"}
+  - id: near-miss/plain-multipart-upload
+    kind: near-miss
+    rationale: "An ordinary multipart file upload without the field"
+    expect: no-match
+    events:
+      - {cs-request-body: 'name="upload"; filename="photo.jpg"'}
+  - id: near-miss/field-in-query-string
+    kind: near-miss
+    rationale: "The rule reads the body only; the string in the query string of a request with an empty body stays quiet"
+    expect: no-match
+    events:
+      - {cs-uri-query: "PHP_SESSION_UPLOAD_PROGRESS=1", cs-request-body: ""}
