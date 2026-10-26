@@ -118,7 +118,35 @@ def titled_doc(rf: RuleFile) -> dict | None:
     return None
 
 
+KQL_FP_LABEL = "False positive:"
+
+
+def kql_falsepositive_bullets(text: str) -> list[str]:
+    """A KQL query's false positives: each `// False positive:` comment line, joined with
+    the indented `//   ` comment lines that continue it, is one bullet (label dropped)."""
+    bullets: list[str] = []
+    cur: str | None = None
+    for ln in text.splitlines():
+        s = ln.strip()
+        body = s[2:] if s.startswith("//") else None
+        if body is not None and body.strip().startswith(KQL_FP_LABEL):
+            if cur is not None:
+                bullets.append(cur)
+            cur = body.strip()[len(KQL_FP_LABEL):]
+        elif cur is not None and body is not None and body.startswith("  ") and body.strip():
+            cur += " " + body
+        else:
+            if cur is not None:
+                bullets.append(cur)
+            cur = None
+    if cur is not None:
+        bullets.append(cur)
+    return [b for b in (normalize(x) for x in bullets) if b]
+
+
 def falsepositive_bullets(rf: RuleFile) -> list[str]:
+    if rf.engine == "kusto":
+        return kql_falsepositive_bullets(rf.text)
     bullets = []
     for d in rf.docs:
         if isinstance(d, dict):

