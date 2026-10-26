@@ -602,5 +602,32 @@ class HarnessTests(unittest.TestCase):
         self.assertFalse(engine.evaluate(sql, fields, [{"cs-host": "example.testx"}]))
 
 
+    def test_18_event_count_correlation(self):
+        # event_count counts matching events per group inside the timespan, whatever their values.
+        text = yaml.safe_dump_all([
+            {"title": "Toy burst", "id": "44444444-4444-4444-8444-444444444444", "status": "test",
+             "correlation": {"type": "event_count", "rules": ["toy_burst_base"], "group-by": ["c-ip"],
+                             "timespan": "1m", "condition": {"gte": 3}}},
+            {"title": "Toy burst base", "id": "55555555-5555-4555-8555-555555555555", "name": "toy_burst_base",
+             "status": "test", "logsource": {"category": "webserver"},
+             "detection": {"selection": {"cs-uri-stem": "/reset"}, "condition": "selection"}},
+        ], sort_keys=False)
+        sql, fields, _, is_corr = engine.compile_rule(text)
+        self.assertTrue(is_corr)
+        self.assertIn("c-ip", fields)
+
+        def events(n, step, ip=lambda i: "203.0.113.7", stem="/reset"):
+            return [{"cs-uri-stem": stem, "c-ip": ip(i),
+                     "timestamp": f"2026-10-23T10:{(i * step) // 60:02d}:{(i * step) % 60:02d}Z"} for i in range(n)]
+
+        self.assertTrue(engine.evaluate(sql, fields, events(3, 10)))
+        # Identical events still count: no distinct-value logic.
+        self.assertTrue(engine.evaluate(sql, fields, events(3, 0)))
+        self.assertFalse(engine.evaluate(sql, fields, events(2, 10)))
+        self.assertFalse(engine.evaluate(sql, fields, events(3, 40)))
+        self.assertFalse(engine.evaluate(sql, fields, events(3, 10, ip=lambda i: f"203.0.113.{i}")))
+        self.assertFalse(engine.evaluate(sql, fields, events(3, 10, stem="/login")))
+
+
 if __name__ == "__main__":
     unittest.main()

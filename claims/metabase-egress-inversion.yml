@@ -1,0 +1,115 @@
+schema: umbrasec.claims/v1
+rule: queries/kql/metabase-egress-inversion.kql
+rule_id: null
+rule_sha256: 695da149cdaff5dd814a8fa734a34409336af29c86a65ecb9d91e7aac3fe1bb7
+engine: kusto
+writeup: research/mathspace-metabase-internal-tooling.html
+reviewed: 2026-10-26
+# Not executed: there is no Kusto engine in CI yet. The events assume the query's
+# own example settings, MetabaseHosts = 10.0.20.15 and SentBytesFromSource = true,
+# with TestDay set to datetime(2026-08-27), the day of the download in the writeup.
+# Each event stands for one day's traffic on one session. Microsoft documents the
+# columns (SourceIP, DestinationIP, SentBytes, ReceivedBytes, TimeGenerated) but not
+# which end of a session SentBytes counts from, so the byte direction is assumed.
+# The query passed Kusto.Language 12.4.1 (Microsoft's parser) with 0 diagnostics.
+event_defaults:
+  _synthetic: true
+claims:
+  - id: catches/bulk-download-by-outside-client
+    kind: catches
+    quote: {source: rule, text: "A day's outbound bytes from one host measured against that host's own daily median"}
+    expect: match
+    table: CommonSecurityLog
+    events:
+      - {_note: "internal reports: the host sends 200 MB of responses", TimeGenerated: "2026-08-20T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-21T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-22T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-23T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-24T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-25T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-26T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-27T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {_note: "an outside client pulls 2 GB from the host: 2.2 GB that day, 11 times the median", TimeGenerated: "2026-08-27T12:00:00Z", SourceIP: "198.51.100.23", DestinationIP: "10.0.20.15", SentBytes: 20000000, ReceivedBytes: 2000000000}
+  - id: catches/host-pushes-data-out
+    kind: catches
+    quote: {source: rule, text: "Bulk extraction inverts that: outbound volume jumps."}
+    expect: match
+    table: CommonSecurityLog
+    events:
+      - {_note: "internal reports: the host sends 200 MB of responses", TimeGenerated: "2026-08-20T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-21T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-22T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-23T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-24T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-25T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-26T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {_note: "the host itself sends 1.5 GB to an outside address", TimeGenerated: "2026-08-27T12:00:00Z", SourceIP: "10.0.20.15", DestinationIP: "203.0.113.9", SentBytes: 1500000000, ReceivedBytes: 10000000}
+  - id: near-miss/ordinary-day
+    kind: near-miss
+    rationale: "A busier day below the default Multiple of 3"
+    expect: no-match
+    table: CommonSecurityLog
+    events:
+      - {_note: "internal reports: the host sends 200 MB of responses", TimeGenerated: "2026-08-20T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-21T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-22T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-23T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-24T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-25T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-26T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {_note: "250 MB, 1.25 times the median", TimeGenerated: "2026-08-27T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 250000000}
+  - id: near-miss/quiet-host-below-floor
+    kind: near-miss
+    rationale: "A quiet host's multiple stays under the 100 MB MinEgressBytes floor"
+    expect: no-match
+    table: CommonSecurityLog
+    events:
+      - {_note: "internal reports: the host sends 10 MB of responses", TimeGenerated: "2026-08-20T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 10000000}
+      - {TimeGenerated: "2026-08-21T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 10000000}
+      - {TimeGenerated: "2026-08-22T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 10000000}
+      - {TimeGenerated: "2026-08-23T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 10000000}
+      - {TimeGenerated: "2026-08-24T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 10000000}
+      - {TimeGenerated: "2026-08-25T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 10000000}
+      - {TimeGenerated: "2026-08-26T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 10000000}
+      - {_note: "60 MB, six times the median but under MinEgressBytes", TimeGenerated: "2026-08-27T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 1000000, ReceivedBytes: 60000000}
+  - id: near-miss/short-history
+    kind: near-miss
+    rationale: "Fewer than MinBaselineDays (7) days of history, so there is no norm to compare with"
+    expect: no-match
+    table: CommonSecurityLog
+    events:
+      - {_note: "internal reports: the host sends 200 MB of responses", TimeGenerated: "2026-08-22T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-23T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-24T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-25T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-26T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {_note: "2 GB out, but only five days of history", TimeGenerated: "2026-08-27T12:00:00Z", SourceIP: "198.51.100.23", DestinationIP: "10.0.20.15", SentBytes: 20000000, ReceivedBytes: 2000000000}
+  - id: blind-spot/extraction-paced-under-the-multiple
+    kind: blind-spot
+    quote: {source: rule, text: "an extraction paced so that no single day reaches the multiple"}
+    expect: no-match
+    table: CommonSecurityLog
+    events:
+      - {_note: "internal reports: the host sends 200 MB of responses", TimeGenerated: "2026-08-20T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-21T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-22T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-23T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-24T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-25T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-26T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-27T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {_note: "350 MB of a larger extraction on this day: 550 MB, 2.75 times the median", TimeGenerated: "2026-08-27T12:00:00Z", SourceIP: "198.51.100.23", DestinationIP: "10.0.20.15", SentBytes: 5000000, ReceivedBytes: 350000000}
+  - id: blind-spot/download-through-unlisted-proxy
+    kind: blind-spot
+    quote: {source: rule, text: "a download through the proxy leaves from the proxy, not the host"}
+    expect: no-match
+    table: CommonSecurityLog
+    events:
+      - {_note: "every session ends at the reverse proxy, which is not in MetabaseHosts", TimeGenerated: "2026-08-20T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.5", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-21T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.5", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-22T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.5", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-23T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.5", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-24T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.5", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-25T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.5", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {TimeGenerated: "2026-08-26T12:00:00Z", SourceIP: "10.0.30.7", DestinationIP: "10.0.20.5", SentBytes: 5000000, ReceivedBytes: 200000000}
+      - {_note: "2 GB leaves through the proxy", TimeGenerated: "2026-08-27T12:00:00Z", SourceIP: "198.51.100.23", DestinationIP: "10.0.20.5", SentBytes: 20000000, ReceivedBytes: 2000000000}

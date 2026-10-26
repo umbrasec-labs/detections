@@ -11,9 +11,9 @@ sentences:
   - starts: "We have not tested the exploit"
     disposition: context
     reason: "A sourcing statement; the claims here use synthetic marker events, never exploit details"
-  - starts: "The Sigma rule is experimental and has not been validated against a real exploitation attempt"
+  - starts: "The Sigma rules are experimental and have not been validated against a real exploitation attempt"
     disposition: context
-    reason: "Rule status and tuning advice; the false-positive notes it points to are proved by the rule's false-positive claims"
+    reason: "Rule status and tuning advice; the false-positive notes it points to are proved by each rule's false-positive claims"
   - starts: "On the Essential Eight timeframes"
     disposition: context
     reason: "Policy advice unrelated to the rule logic; nothing to execute"
