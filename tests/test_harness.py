@@ -628,6 +628,50 @@ class HarnessTests(unittest.TestCase):
         self.assertFalse(engine.evaluate(sql, fields, events(3, 10, ip=lambda i: f"203.0.113.{i}")))
         self.assertFalse(engine.evaluate(sql, fields, events(3, 10, stem="/login")))
 
+    def test_19_kusto_false_positive_quotes_the_query_comments(self):
+        # A KQL query has no falsepositives field; each `// False positive:` comment line plus
+        # its indented continuation lines is one bullet, and only those bullets can be quoted.
+        kql = self.toy.upstream / pack.PACK_PATH / "queries" / "kql" / "toyq.kql"
+        kql.parent.mkdir(parents=True)
+        kql.write_text("// Toy query\n// Source writeup: https://umbrasec.dev/research/toy.html\n"
+                       "// Limitation: probes from the monitoring host are not excluded\n"
+                       "// False positive: health checks from the load balancer, which\n"
+                       "//   run every minute\n"
+                       "// Tuning: list the load balancer\n"
+                       "AuditLogs | where OperationName == 'probe'\n", encoding="utf-8")
+        rf = next(r for r in pack.discover(self.toy.upstream) if r.id == "toyq")
+        self.assertEqual(pack.falsepositive_bullets(rf), ["health checks from the load balancer, which run every minute"])
+        doc = {
+            "schema": C.SCHEMA, "rule": "queries/kql/toyq.kql", "rule_id": None,
+            "rule_sha256": pack.sha256_file(kql), "engine": "kusto", "writeup": "research/toy.html",
+            "reviewed": "2026-10-26", "event_defaults": {"_synthetic": True},
+            "claims": [{"id": "false-positive/health-check", "kind": "false-positive", "expect": "match",
+                        "table": "AuditLogs",
+                        "quote": {"source": "rule", "text": "load balancer, which run every minute"},
+                        "events": [{"_note": "probe", "OperationName": "probe"}]}],
+        }
+        path = self.toy.claims_dir / "toyq.yml"
+
+        def run(quote):
+            doc["claims"][0]["quote"]["text"] = quote
+            path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
+            return self.toy.evaluate()
+
+        res = run("load balancer, which run every minute")
+        self.assertNotIn("quote-not-found", codes(res, "toyq"))
+        self.assertNotIn("schema", codes(res, "toyq"))
+        self.assertNotIn("fp-uncovered", codes(res, "toyq"))
+        self.assertEqual(res["rules"]["toyq"]["claims"][0]["result"], "not-executed")
+        cov = res["rules"]["toyq"]["coverage"]["falsepositives"]
+        # Not executed is neither proved nor failed.
+        self.assertEqual((cov["total"], cov["proved"], cov["failed"], cov["not_executed"]), (1, 0, 0, 1))
+        self.assertEqual(cov["bullets"][0]["not_executed_by"], ["false-positive/health-check"])
+        # A comment line that is not a False positive: line cannot be quoted as one.
+        res = run("probes from the monitoring host are not excluded")
+        self.assertIn("quote-not-found", codes(res, "toyq"))
+        self.assertIn("fp-uncovered", codes(res, "toyq"))
+        self.assertIn("quote-not-found", codes(run("list the load balancer"), "toyq"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -17,11 +17,11 @@ Each upstream rule has one claims file in `claims/`, with the same file stem. A 
 
 A false-positive claim must fire. The rule's own notes say this harmless activity trips it, so a quiet result would mean the note is wrong or the event does not show the activity. A blind-spot claim must stay quiet. If it fired, the limitation would be gone and the prose would be out of date.
 
-Quotes bind each claim to the canonical prose. The harness checks that every quote appears, after whitespace is collapsed, in the rule file or in its writeup. A false-positive quote must come from one of the rule's `falsepositives` bullets. When upstream rewords a sentence, the quote stops matching and the rule fails until someone updates the claim.
+Quotes bind each claim to the canonical prose. The harness checks that every quote appears, after whitespace is collapsed, in the rule file or in its writeup. A false-positive quote must come from one of the rule's `falsepositives` bullets; a KQL query has no such field, so its false-positive quotes come from its `// False positive:` comment lines (each with its indented continuation lines is one bullet). When upstream rewords a sentence, the quote stops matching and the rule fails until someone updates the claim.
 
 ## The coverage gate
 
-Every `falsepositives` bullet in every Sigma rule is either proved by a false-positive claim or given a disposition with a reason (`advice`, `lifecycle` or `not-an-event`).
+Every `falsepositives` bullet in every Sigma rule, and every `// False positive:` line in a KQL query, is either quoted by a false-positive claim or given a disposition with a reason (`advice`, `lifecycle` or `not-an-event`). A Sigma claim proves its bullet only when it passes; a KQL claim is counted as not executed.
 
 Every sentence in a referenced writeup's "Honest limitations" section has one entry in `claims/_writeups/<slug>.yml`. The entry is either `tested` by a passing claim that quotes that sentence, or dispositioned as `context`, `prerequisite` or `not-reproduced` with a reason. A new bullet or a new sentence upstream fails the gate until someone accounts for it. An entry whose sentence has gone also fails, so prose drift shows up. Each quote, disposition and ledger entry must pick out exactly one bullet or sentence, so a new one cannot inherit an old one's disposition. A bullet or sentence counts as proved only while the claim that tests it passes.
 

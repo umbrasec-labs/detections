@@ -1,0 +1,167 @@
+schema: umbrasec.claims/v1
+rule: rules/cross-platform/ai-agent-cli-headless-approval-bypass.yml
+rule_id: efead37d-b263-4f88-843c-39fc390ff510
+rule_sha256: 75c64643e8e2bde4b38d21d79af639c377e21b67908c80fb73ba54e626e58e33
+engine: sigma
+writeup: research/detecting-hijacked-ai-coding-agents.html
+reviewed: 2026-10-26
+event_defaults:
+  _synthetic: true
+fp_dispositions:
+  - bullet: "Scope the rule by host group"
+    disposition: advice
+    reason: "Deployment scoping advice; there is no event shape to reproduce"
+claims:
+  - id: catches/claude-headless-bypass
+    kind: catches
+    quote: {source: rule, text: "claude with --dangerously-skip-permissions or --permission-mode bypassPermissions, and -p or --print"}
+    expect: match
+    events:
+      - {_note: "native install on Linux; the image resolves to the versions folder", Image: /home/dev/.local/share/claude/versions/2.1.310, CommandLine: 'claude --dangerously-skip-permissions -p "summarise the repo"'}
+      - {_note: "Windows native install, flag right after the quoted image path", Image: 'C:\Users\dev\.local\bin\claude.exe', CommandLine: '"C:\Users\dev\.local\bin\claude.exe" --dangerously-skip-permissions --print "summarise the repo"'}
+      - {_note: "the permission-mode spelling of the same bypass", Image: /usr/local/bin/claude, CommandLine: 'claude --permission-mode bypassPermissions -p "summarise the repo"'}
+      - {_note: "-p last, prompt on stdin", Image: /usr/local/bin/claude, CommandLine: "claude --dangerously-skip-permissions -p"}
+  - id: catches/gemini-headless-bypass
+    kind: catches
+    quote: {source: rule, text: "gemini with --yolo, -y or --approval-mode yolo, and -p or --prompt"}
+    expect: match
+    events:
+      - {_note: "the --yolo flag", Image: /usr/local/bin/gemini, CommandLine: 'gemini --yolo -p "summarise the repo"'}
+      - {_note: "the -y short flag", Image: /usr/local/bin/gemini, CommandLine: 'gemini -y --prompt "summarise the repo"'}
+      - {_note: "the approval-mode spelling", Image: /usr/local/bin/gemini, CommandLine: 'gemini --approval-mode yolo --prompt="summarise the repo"'}
+  - id: catches/node-launched-cli
+    kind: catches
+    quote: {source: rule, text: "Gemini CLI runs under node, Claude Code ran under node as an npm package before its native binary, and the Copilot CLI process image is not confirmed, so for those three the rule also matches node with the CLI name on its command line."}
+    expect: match
+    events:
+      - {_note: "Gemini CLI launched by node on Linux", Image: /usr/bin/node, CommandLine: 'node /usr/local/bin/gemini --yolo -p "summarise the repo"'}
+      - {_note: "Claude Code as the 2025 npm package: the claude bin is cli.js, a node script", Image: /usr/bin/node, CommandLine: 'node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js --permission-mode bypassPermissions --print "summarise the repo"'}
+      - {_note: "Copilot CLI launched by node on Windows", Image: 'C:\Program Files\nodejs\node.exe', CommandLine: '"C:\Program Files\nodejs\node.exe" C:\Users\dev\AppData\Roaming\npm\copilot -p "summarise the repo" --yolo'}
+  - id: catches/codex-headless-bypass
+    kind: catches
+    quote: {source: rule, text: "codex exec or e with --dangerously-bypass-approvals-and-sandbox"}
+    expect: match
+    events:
+      - {_note: "exec subcommand", Image: /usr/local/bin/codex, CommandLine: 'codex exec --dangerously-bypass-approvals-and-sandbox "summarise the repo"'}
+      - {_note: "the e alias on Windows", Image: 'C:\Tools\codex\codex.exe', CommandLine: 'codex.exe e --dangerously-bypass-approvals-and-sandbox "summarise the repo"'}
+      - {_note: "flag before the subcommand, prompt on stdin", Image: /usr/local/bin/codex, CommandLine: "codex --dangerously-bypass-approvals-and-sandbox exec"}
+  - id: catches/copilot-headless-bypass
+    kind: catches
+    quote: {source: rule, text: "copilot with --allow-all or --yolo, and -p or --prompt"}
+    expect: match
+    events:
+      - {_note: "--allow-all last", Image: /usr/local/bin/copilot, CommandLine: 'copilot -p "summarise the repo" --allow-all'}
+      - {_note: "--allow-all before the prompt", Image: /usr/local/bin/copilot, CommandLine: 'copilot --allow-all -p "summarise the repo"'}
+      - {_note: "--yolo with the --prompt= form", Image: 'C:\Tools\copilot.exe', CommandLine: 'copilot.exe --prompt="summarise the repo" --yolo'}
+  - id: catches/amazon-q-headless-bypass
+    kind: catches
+    quote: {source: rule, text: "q or qchat with --trust-all-tools or -a, and --no-interactive or --non-interactive"}
+    expect: match
+    events:
+      - {_note: "the chat subcommand form", Image: /usr/local/bin/q, CommandLine: 'q chat --trust-all-tools --no-interactive "summarise the repo"'}
+      - {_note: "short flag and the non-interactive alias", Image: /usr/local/bin/qchat, CommandLine: 'qchat chat -a --non-interactive "summarise the repo"'}
+  - id: catches/s1ngularity-shape
+    kind: catches
+    quote: {source: rule, text: 'The Nx "s1ngularity" packages (August 2025) started claude, gemini and q this way from a node postinstall script.'}
+    expect: match
+    events:
+      - {_note: "August 2025: claude was the npm package, so the launched process is node running the claude script", ParentImage: /usr/bin/node, Image: /usr/bin/node, CommandLine: 'node /usr/local/bin/claude --dangerously-skip-permissions -p "summarise the repo"'}
+      - {_note: "the same launch against today's native binary", ParentImage: /usr/bin/node, Image: /usr/local/bin/claude, CommandLine: 'claude --dangerously-skip-permissions -p "summarise the repo"'}
+      - {_note: "node starts gemini, which itself runs under node", ParentImage: /usr/bin/node, Image: /usr/bin/node, CommandLine: 'node /usr/local/bin/gemini --yolo -p "summarise the repo"'}
+      - {_note: "node starts q with the chat subcommand", ParentImage: /usr/bin/node, Image: /usr/local/bin/q, CommandLine: 'q chat --trust-all-tools --no-interactive "summarise the repo"'}
+  - id: catches/amazon-q-no-chat-subcommand
+    kind: catches
+    quote: {source: rule, text: "Amazon Q for VS Code 1.84.0 (CVE-2025-8217) carried an injected q --trust-all-tools --no-interactive launch through a shell, with no chat subcommand; it never ran, because of a syntax error."}
+    expect: match
+    events:
+      - {_note: "exec runs it through a shell, so the parent is sh", ParentImage: /bin/sh, Image: /usr/local/bin/q, CommandLine: 'q --trust-all-tools --no-interactive "summarise the repo"'}
+  - id: near-miss/interactive-bypass
+    kind: near-miss
+    rationale: "Bypass flag without headless mode: a developer running the agent interactively, which the docs describe for isolated containers"
+    expect: no-match
+    events:
+      - {_note: "no prompt at all", Image: /usr/local/bin/claude, CommandLine: "claude --dangerously-skip-permissions"}
+      - {_note: "a positional prompt still opens the interactive session", Image: /usr/local/bin/claude, CommandLine: 'claude --dangerously-skip-permissions "summarise the repo"'}
+  - id: near-miss/headless-no-bypass
+    kind: near-miss
+    rationale: "Headless with the permission prompts left on is ordinary scripted use"
+    expect: no-match
+    events:
+      - {Image: /usr/local/bin/claude, CommandLine: 'claude -p "summarise the repo"'}
+  - id: near-miss/claude-allow-dangerously-skip-permissions
+    kind: near-miss
+    quote: {source: rule, text: "Claude Code's --allow-dangerously-skip-permissions only adds bypass mode to the Shift+Tab cycle without starting in it, and does not match"}
+    rationale: "The longer flag shares the words of the bypass flag but does not start in bypass mode; a looser match on a shorter part such as skip-permissions would fire on it"
+    expect: no-match
+    events:
+      - {_note: "headless, longer flag only", Image: /usr/local/bin/claude, CommandLine: 'claude --allow-dangerously-skip-permissions -p "summarise the repo"'}
+  - id: near-miss/copilot-allow-all-tools-only
+    kind: near-miss
+    quote: {source: rule, text: "A Copilot run that passes only --allow-all-tools is not covered"}
+    rationale: "--allow-all is a prefix of --allow-all-tools; Copilot needs --allow-all-tools for any programmatic run, so matching it would fire on every scripted run"
+    expect: no-match
+    events:
+      - {Image: /usr/local/bin/copilot, CommandLine: 'copilot -p "summarise the repo" --allow-all-tools'}
+      - {_note: "the flag in the middle of the command line", Image: /usr/local/bin/copilot, CommandLine: 'copilot --allow-all-tools -p "summarise the repo"'}
+  - id: near-miss/gemini-positional-prompt
+    kind: near-miss
+    quote: {source: rule, text: "A Gemini positional prompt without -p is not matched"}
+    rationale: "A positional prompt defaults to interactive mode in a TTY; without a TTY the behaviour is not confirmed"
+    expect: no-match
+    events:
+      - {Image: /usr/local/bin/gemini, CommandLine: 'gemini --yolo "summarise the repo"'}
+  - id: near-miss/npx-auto-yes-gemini
+    kind: near-miss
+    quote: {source: rule, text: "Under node, Gemini's -y is not matched, because npx takes -y for itself"}
+    rationale: "npx -y only skips npx's own install prompt; Gemini runs headless with its approvals on"
+    expect: no-match
+    events:
+      - {_note: "npx on Linux", Image: /usr/bin/node, CommandLine: 'npx -y @google/gemini-cli -p "summarise the repo"'}
+      - {_note: "npx on Windows: node.exe runs npx-cli.js", Image: 'C:\Program Files\nodejs\node.exe', CommandLine: '"C:\Program Files\nodejs\node.exe" "C:\Program Files\nodejs\node_modules\npm\bin\npx-cli.js" -y @google/gemini-cli -p "summarise the repo"'}
+  - id: blind-spot/copilot-allow-all-spelled-out
+    kind: blind-spot
+    quote: {source: rule, text: "nor one that spells --allow-all out as its three separate flags"}
+    expect: no-match
+    events:
+      - {Image: /usr/local/bin/copilot, CommandLine: 'copilot -p "summarise the repo" --allow-all-tools --allow-all-paths --allow-all-urls'}
+  - id: catches/codex-yolo-alias
+    kind: catches
+    quote: {source: rule, text: "codex exec or e with --dangerously-bypass-approvals-and-sandbox or its --yolo alias"}
+    rationale: "Codex's source defines --yolo as an alias of --dangerously-bypass-approvals-and-sandbox: https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/utils/cli/src/shared_options.rs#L43-L59"
+    expect: match
+    events:
+      - {Image: /usr/local/bin/codex, CommandLine: 'codex exec --yolo "summarise the repo"'}
+      - {_note: "the e alias on Windows, the flag before the subcommand", Image: 'C:\Tools\codex\codex.exe', CommandLine: 'codex.exe --yolo e "summarise the repo"'}
+  - id: near-miss/codex-not-so-yolo
+    kind: near-miss
+    quote: {source: rule, text: "Codex's --not-so-yolo does not match: it is an alias of --approve-for-me, which sends approval requests to automatic review instead of switching them off."}
+    rationale: "--not-so-yolo contains the letters yolo but turns on automatic review, not a bypass (https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/utils/cli/src/shared_options.rs#L43-L59); its text holds yolo but never the --yolo the rule matches, so a looser match on yolo alone would fire on it"
+    expect: no-match
+    events:
+      - {Image: /usr/local/bin/codex, CommandLine: 'codex exec --not-so-yolo "summarise the repo"'}
+      - {_note: "the long form of the same option", Image: /usr/local/bin/codex, CommandLine: 'codex exec --approve-for-me "summarise the repo"'}
+  - id: false-positive/ci-runner-headless-bypass
+    kind: false-positive
+    quote: {source: rule, text: "CI runners and disposable containers that run agents headless with approvals off by design"}
+    expect: match
+    events:
+      - {_note: "a pipeline step in a throwaway container", ParentImage: /bin/bash, Image: /usr/local/bin/claude, CommandLine: 'claude -p "summarise the repo" --dangerously-skip-permissions'}
+      - {_note: "a CI job running Codex non-interactively", ParentImage: /bin/sh, Image: /usr/local/bin/codex, CommandLine: 'codex exec --dangerously-bypass-approvals-and-sandbox "summarise the repo"'}
+  - id: false-positive/developer-script
+    kind: false-positive
+    quote: {source: rule, text: "A developer scripting an agent on their own workstation with the same flags"}
+    expect: match
+    events:
+      - {_note: "a developer's own shell script", ParentImage: /bin/zsh, Image: /usr/local/bin/gemini, CommandLine: 'gemini --approval-mode yolo -p "summarise the repo"'}
+  - id: false-positive/sdk-embedded-agent
+    kind: false-positive
+    quote: {source: rule, text: "or an application built on an agent SDK that starts the CLI with bypass on"}
+    expect: match
+    events:
+      - {_note: "an application built on an agent SDK starts Claude Code headless with bypass on; argument order illustrative", ParentImage: /usr/bin/node, Image: /usr/local/bin/claude, CommandLine: 'claude --output-format stream-json --verbose --permission-mode bypassPermissions --print -- "summarise the repo"'}
+  - id: false-positive/prompt-text-token
+    kind: false-positive
+    quote: {source: rule, text: "An interactive bypass run whose prompt text happens to contain a headless flag such as -p"}
+    expect: match
+    events:
+      - {_note: "interactive, but the prompt contains mkdir -p", Image: /usr/local/bin/claude, CommandLine: 'claude --dangerously-skip-permissions "run mkdir -p build"'}

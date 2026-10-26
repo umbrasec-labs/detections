@@ -88,7 +88,8 @@ def render_report(rec: dict) -> str:
         f"- Claims: {s['claims']} in total, {s['executed']} executed, {s['passed']} passed, {s['failed']} failed, "
         f"{s['not_executed_claims']} not executed.",
         f"- falsepositives bullets: {fp['total']} in total, {fp['proved']} proved, {fp['dispositioned']} dispositioned, "
-        f"{fp['failed']} quoted only by claims that did not pass, {fp['uncovered']} uncovered.",
+        f"{fp['failed']} quoted only by claims that did not pass, {fp['not_executed']} quoted by KQL claims "
+        f"(not executed), {fp['uncovered']} uncovered.",
         f"- Honest limitations sentences: {ws['total']} in total, {ws['tested']} tested, {ws['dispositioned']} dispositioned, "
         f"{ws['failed']} tested by claims that did not pass, {ws['unaccounted']} unaccounted.",
         f"- sigma-pack: `{sp['repo']}` at `{sp['commit'] or 'unknown'}` (`{sp['path']}`)",
@@ -109,6 +110,7 @@ def render_report(rec: dict) -> str:
         cov = r["coverage"]["falsepositives"]
         extra = [f"+{cov['dispositioned']} dispositioned"] if cov["dispositioned"] else []
         extra += [f"{cov['failed']} failed"] if cov["failed"] else []
+        extra += [f"{cov['not_executed']} not executed"] if cov.get("not_executed") else []
         fp_cell = f"{cov['proved']}/{cov['total']}" + (f" ({', '.join(extra)})" if extra else "")
         if cov["total"] == 0:
             fp_cell = "none stated"

@@ -217,7 +217,8 @@ def check_rule(rf: pack.RuleFile, claims_path: Path, ctx: Context) -> dict:
         "status": None,
         "errors": errors,
         "counts": {k: 0 for k in KIND_ORDER},
-        "coverage": {"falsepositives": {"total": 0, "proved": 0, "dispositioned": 0, "failed": 0, "bullets": []}},
+        "coverage": {"falsepositives": {"total": 0, "proved": 0, "dispositioned": 0, "failed": 0,
+                                        "not_executed": 0, "bullets": []}},
         "lint": lint.lint(rf),
         "findings": [],
         "claims": [],
@@ -303,7 +304,7 @@ def check_rule(rf: pack.RuleFile, claims_path: Path, ctx: Context) -> dict:
         claims = []
 
     seen_ids = set()
-    fp_quotes: list[tuple[str, str, bool]] = []  # (claim id, normalized quote, passed)
+    fp_quotes: list[tuple[str, str, str]] = []  # (claim id, normalized quote, result)
     for idx, c in enumerate(claims):
         if not isinstance(c, dict):
             errors.append(err("schema", f"claim {idx} must be a mapping"))
@@ -451,7 +452,7 @@ def check_rule(rf: pack.RuleFile, claims_path: Path, ctx: Context) -> dict:
                     cid,
                 ))
         if kind == "false-positive" and qtext:
-            fp_quotes.append((cid, qtext, out["result"] == "pass"))
+            fp_quotes.append((cid, qtext, out["result"]))
         if kind == "undocumented":
             rec["findings"].append({
                 "claim": cid,
@@ -463,7 +464,8 @@ def check_rule(rf: pack.RuleFile, claims_path: Path, ctx: Context) -> dict:
             })
         rec["claims"].append(out)
 
-    # falsepositives coverage (Sigma only; KQL has no falsepositives field)
+    # falsepositives coverage: a Sigma rule's falsepositives bullets, or a KQL query's
+    # `// False positive:` comment lines (pack.falsepositive_bullets)
     disps = data.get("fp_dispositions") or []
     if not isinstance(disps, list):
         errors.append(err("schema", "fp_dispositions must be a list"))
@@ -492,14 +494,17 @@ def check_rule(rf: pack.RuleFile, claims_path: Path, ctx: Context) -> dict:
 
     cov = rec["coverage"]["falsepositives"]
     for b in bullets:
-        quoted = [(cid, ok) for cid, q, ok in fp_quotes if q in b]
-        proved_by = [cid for cid, ok in quoted if ok]
-        failed_by = [cid for cid, ok in quoted if not ok]
+        quoted = [(cid, res) for cid, q, res in fp_quotes if q in b]
+        proved_by = [cid for cid, res in quoted if res == "pass"]
+        # A KQL claim is never executed, so it neither proves nor fails its bullet.
+        not_executed_by = [cid for cid, res in quoted if res == "not-executed"]
+        failed_by = [cid for cid, res in quoted if res not in ("pass", "not-executed")]
         disps_here = [d for nb, d in norm_disps if nb and b.startswith(nb)]
         disp = disps_here[0] if disps_here else None
         if len(disps_here) > 1:
             errors.append(err("schema", f"{len(disps_here)} fp_dispositions match one bullet: {b!r}"))
-        entry = {"text": b, "proved_by": proved_by, "failed_by": failed_by, "disposition": None}
+        entry = {"text": b, "proved_by": proved_by, "failed_by": failed_by,
+                 "not_executed_by": not_executed_by, "disposition": None}
         cov["total"] += 1
         if proved_by:
             cov["proved"] += 1
@@ -509,6 +514,8 @@ def check_rule(rf: pack.RuleFile, claims_path: Path, ctx: Context) -> dict:
         elif failed_by:
             # claim-failed (or the claim's own error) already makes the rule failing
             cov["failed"] += 1
+        elif not_executed_by:
+            cov["not_executed"] += 1
         else:
             errors.append(err("fp-uncovered", f"no false-positive claim or disposition covers: {b!r}"))
         cov["bullets"].append(entry)
@@ -670,7 +677,8 @@ def evaluate_all(upstream: Path, claims_dir: Path, only: list[str] | None = None
                 "stale": False, "status": None, "errors": [err("no-claims-file", f"claims/{rf.id}.yml is missing")],
                 "counts": {k: 0 for k in KIND_ORDER},
                 "coverage": {"falsepositives": {"total": len(pack.falsepositive_bullets(rf)), "proved": 0,
-                                                "dispositioned": 0, "failed": 0, "bullets": []}},
+                                                "dispositioned": 0, "failed": 0, "not_executed": 0,
+                                                "bullets": []}},
                 "lint": lint.lint(rf), "findings": [], "claims": [], "writeup": None, "reviewed": None,
                 "claims_url": None, "mapper_url": MAPPER_URL.format(stem=rf.id),
             }
@@ -729,8 +737,8 @@ def summarize(rules: dict, orphans: dict, writeups: dict) -> dict:
     claims = [c for r in rules.values() for c in r["claims"]]
     by_kind = {k: sum(r["counts"][k] for r in rules.values()) for k in KIND_ORDER}
     fp = {k: sum(r["coverage"]["falsepositives"][k] for r in rules.values())
-          for k in ("total", "proved", "dispositioned", "failed")}
-    fp["uncovered"] = fp["total"] - fp["proved"] - fp["dispositioned"] - fp["failed"]
+          for k in ("total", "proved", "dispositioned", "failed", "not_executed")}
+    fp["uncovered"] = fp["total"] - fp["proved"] - fp["dispositioned"] - fp["failed"] - fp["not_executed"]
     ws = {k: sum(w["counts"][k] for w in writeups.values())
           for k in ("total", "tested", "failed", "dispositioned", "unaccounted")}
     writeup_errors = sum(1 for w in writeups.values() if w["errors"])
