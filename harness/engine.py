@@ -26,7 +26,8 @@ from sigma.types import SigmaNumber, SigmaString
 
 # all only switches a value list from OR to AND; self-test 17 pins it.
 ALLOWED_MODIFIERS = {SigmaAllModifier, SigmaContainsModifier, SigmaEndswithModifier, SigmaStartswithModifier}
-ALLOWED_CORRELATIONS = {"value_count"}  # add event_count only together with a self-test
+# Self-test 8 pins value_count, self-test 18 pins event_count.
+ALLOWED_CORRELATIONS = {"value_count", "event_count"}
 DEFAULT_TS = "2026-01-01T00:00:00Z"
 SEMANTICS = (
     "Sigma reference semantics via pySigma; ASCII case-insensitive; labelled synthetic events; "

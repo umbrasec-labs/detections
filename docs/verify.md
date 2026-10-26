@@ -106,7 +106,7 @@ A rule whose bytes changed since review is `stale`. Its claims still run, and an
 ## Engine notes
 
 - pySigma compiles each Sigma file to one SQLite query. The harness never evaluates a condition itself.
-- The engine fails closed. It accepts the `contains`, `startswith`, `endswith` and `all` modifiers, string and number values, and `value_count` correlations. Anything else is `unsupported`.
+- The engine fails closed. It accepts the `contains`, `startswith`, `endswith` and `all` modifiers, string and number values, and `value_count` and `event_count` correlations. Anything else is `unsupported`.
 - Every column is declared `COLLATE NOCASE` with no type name, so equality is case-insensitive as Sigma requires. `LIKE` already is. Both fold ASCII only.
 - The table gets a column for every field the rule names, so an event that omits a field still evaluates. The backend wraps negations in `COALESCE(..., 0)`, so an absent field under `not` behaves as Sigma says. Self-test 7 pins this.
 - A rule that compares a field to a number needs an int in the event. The string `"4769"` would silently miss, so the harness rejects it.
