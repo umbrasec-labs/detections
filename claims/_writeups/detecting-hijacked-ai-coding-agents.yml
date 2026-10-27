@@ -5,11 +5,11 @@ sentences:
   - starts: "Each agent fingerprint in these detections, whether a process name, a flag or a wrapper string"
     disposition: prerequisite
     reason: "A version statement; the claims use the fingerprints of the agent versions the rules cite, and a new release needs a new source, which synthetic events cannot supply"
-  - starts: "Agents whose process names or launch chain no public source confirms"
+  - starts: "Cursor and Devin coverage rests on vendor docs and shipped code, not on a capture"
     disposition: tested
     claims:
       - ai-agent-shell-risky-command/blind-spot/unconfirmed-agent-left-out
-    reason: "Proved against ai-agent-shell-risky-command; Rule 1 has no selection for these agents and Detection 3's Editors list is Code.exe only"
+    reason: "Proved against ai-agent-shell-risky-command: a Cursor Helper (Plugin) extension host and the bundled devin binary as the parent of a plain shell credential read stay no-match; the Cursor strings that are covered are proved by its cursor catches claims, and the docs and shipped-code basis is a sourcing statement no synthetic event can settle"
   - starts: "The Claude Code wrapper string that Detection 2 matches comes from watching Claude Code 2.1.310"
     disposition: context
     reason: "A sourcing statement; the wrapper match itself is proved by ai-agent-shell-risky-command catches/claude-wrapper-linux, which quotes the rule's own copy of this limitation"

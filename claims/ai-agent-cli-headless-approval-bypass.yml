@@ -1,10 +1,10 @@
 schema: umbrasec.claims/v1
 rule: rules/cross-platform/ai-agent-cli-headless-approval-bypass.yml
 rule_id: efead37d-b263-4f88-843c-39fc390ff510
-rule_sha256: 75c64643e8e2bde4b38d21d79af639c377e21b67908c80fb73ba54e626e58e33
+rule_sha256: 4384ce2aace6f1ff4f9f6a208f1c4abcb5d6793092e2fb799ef8eeeb0b6a1c66
 engine: sigma
 writeup: research/detecting-hijacked-ai-coding-agents.html
-reviewed: 2026-10-26
+reviewed: 2026-10-27
 event_defaults:
   _synthetic: true
 fp_dispositions:
@@ -31,12 +31,13 @@ claims:
       - {_note: "the approval-mode spelling", Image: /usr/local/bin/gemini, CommandLine: 'gemini --approval-mode yolo --prompt="summarise the repo"'}
   - id: catches/node-launched-cli
     kind: catches
-    quote: {source: rule, text: "Gemini CLI runs under node, Claude Code ran under node as an npm package before its native binary, and the Copilot CLI process image is not confirmed, so for those three the rule also matches node with the CLI name on its command line."}
+    quote: {source: rule, text: "Gemini CLI runs under node, Claude Code ran under node as an npm package before its native binary, and an npm install of the Copilot CLI runs a node loader (npm-loader.js) that starts the native copilot with the same flags, so for those three the rule also matches node with the CLI name on its command line"}
     expect: match
     events:
       - {_note: "Gemini CLI launched by node on Linux", Image: /usr/bin/node, CommandLine: 'node /usr/local/bin/gemini --yolo -p "summarise the repo"'}
       - {_note: "Claude Code as the 2025 npm package: the claude bin is cli.js, a node script", Image: /usr/bin/node, CommandLine: 'node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js --permission-mode bypassPermissions --print "summarise the repo"'}
       - {_note: "Copilot CLI launched by node on Windows", Image: 'C:\Program Files\nodejs\node.exe', CommandLine: '"C:\Program Files\nodejs\node.exe" C:\Users\dev\AppData\Roaming\npm\copilot -p "summarise the repo" --yolo'}
+      - {_note: "npm install since 1.0.64: node runs the loader, which starts the native copilot with the same flags (the second row is the native copilot)", Image: /usr/bin/node, CommandLine: 'node /usr/local/lib/node_modules/@github/copilot/npm-loader.js -p "summarise the repo" --allow-all'}
   - id: catches/codex-headless-bypass
     kind: catches
     quote: {source: rule, text: "codex exec or e with --dangerously-bypass-approvals-and-sandbox"}
@@ -77,7 +78,7 @@ claims:
       - {_note: "exec runs it through a shell, so the parent is sh", ParentImage: /bin/sh, Image: /usr/local/bin/q, CommandLine: 'q --trust-all-tools --no-interactive "summarise the repo"'}
   - id: near-miss/interactive-bypass
     kind: near-miss
-    rationale: "Bypass flag without headless mode: a developer running the agent interactively, which the docs describe for isolated containers"
+    rationale: "Bypass flag without headless mode: a developer running the agent interactively, which the docs describe for isolated containers. The Cursor branch is the exception: it needs no headless flag, so an interactive Cursor --yolo session matches (catches/cursor-interactive-yolo)"
     expect: no-match
     events:
       - {_note: "no prompt at all", Image: /usr/local/bin/claude, CommandLine: "claude --dangerously-skip-permissions"}
@@ -98,7 +99,7 @@ claims:
   - id: near-miss/copilot-allow-all-tools-only
     kind: near-miss
     quote: {source: rule, text: "A Copilot run that passes only --allow-all-tools is not covered"}
-    rationale: "--allow-all is a prefix of --allow-all-tools; Copilot needs --allow-all-tools for any programmatic run, so matching it would fire on every scripted run"
+    rationale: "--allow-all is a prefix of --allow-all-tools, and the rule matches --allow-all only before a space or at the end of the line. A -p run with no permission options denies every approval-gated request, so a pipeline that needs the shell passes --allow-all-tools, an --allow-tool grant, --assisted-approval or COPILOT_ALLOW_ALL; --allow-all-tools is the common CI form, so matching it alone would fire on every pipeline (a noise call, not a claim that it is required)"
     expect: no-match
     events:
       - {Image: /usr/local/bin/copilot, CommandLine: 'copilot -p "summarise the repo" --allow-all-tools'}
@@ -165,3 +166,156 @@ claims:
     expect: match
     events:
       - {_note: "interactive, but the prompt contains mkdir -p", Image: /usr/local/bin/claude, CommandLine: 'claude --dangerously-skip-permissions "run mkdir -p build"'}
+  - id: catches/copilot-allow-tool-shell
+    kind: catches
+    quote: {source: rule, text: "Copilot also matches with a bare shell grant, --allow-tool=shell or --allow-tool shell on its own or first in a list"}
+    rationale: "A bare shell permission pattern approves every shell command, because the pattern argument is optional: https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference#tool-permission-patterns"
+    expect: match
+    events:
+      - {_note: "= form, last on the line", Image: /usr/local/bin/copilot, CommandLine: 'copilot -p "summarise the repo" --allow-tool=shell'}
+      - {_note: "space form before the prompt", Image: /usr/local/bin/copilot, CommandLine: 'copilot --allow-tool shell -p "summarise the repo"'}
+      - {_note: "shell first in an unquoted list", Image: 'C:\Tools\copilot.exe', CommandLine: 'copilot.exe --allow-tool=shell,write -p "summarise the repo"'}
+      - {_note: "= form, double-quoted shell", Image: /usr/local/bin/copilot, CommandLine: 'copilot --allow-tool="shell" -p "summarise the repo"'}
+      - {_note: "= form, single-quoted shell", Image: /usr/local/bin/copilot, CommandLine: 'copilot --allow-tool=''shell'' -p "summarise the repo"'}
+      - {_note: "space form, shell first in an unquoted list", Image: /usr/local/bin/copilot, CommandLine: 'copilot --allow-tool shell,write -p "summarise the repo"'}
+  - id: near-miss/copilot-scoped-shell-grant
+    kind: near-miss
+    rationale: "A scoped grant such as shell(git:*) approves one command family, and shellcheck is a different word; every matched form needs a space, comma, quote or the end of the line right after shell"
+    expect: no-match
+    events:
+      - {_note: "scoped grant, quoted", Image: /usr/local/bin/copilot, CommandLine: 'copilot --allow-tool=''shell(git:*)'' -p "summarise the repo"'}
+      - {_note: "a tool name that starts with shell", Image: /usr/local/bin/copilot, CommandLine: 'copilot --allow-tool=shellcheck -p "summarise the repo"'}
+  - id: blind-spot/copilot-allow-all-tools-only
+    kind: blind-spot
+    quote: {source: rule, text: "--allow-all-tools is the common CI form, so matching it alone would fire on every pipeline"}
+    expect: no-match
+    events:
+      - {Image: /usr/local/bin/copilot, CommandLine: 'copilot -p "summarise the repo" --allow-all-tools'}
+  - id: blind-spot/copilot-shell-later-in-list
+    kind: blind-spot
+    quote: {source: rule, text: 'A list with shell after another tool (write,shell) is not matched, nor a quoted list such as "shell,write", nor a quoted shell after a space (--allow-tool "shell")'}
+    expect: no-match
+    events:
+      - {_note: "shell after another tool", Image: /usr/local/bin/copilot, CommandLine: 'copilot -p "summarise the repo" --allow-tool=write,shell'}
+      - {_note: "the quoted list form the docs give for several tools; holds only where the sensor records the quotes (Windows): a Linux or macOS argv sensor strips them and the unquoted form matches", Image: /usr/local/bin/copilot, CommandLine: 'copilot --allow-tool="shell,write" -p "summarise the repo"'}
+      - {_note: "a quoted shell after a space; holds only where the sensor records the quotes (Windows): a Linux or macOS argv sensor strips them and the unquoted form matches", Image: /usr/local/bin/copilot, CommandLine: 'copilot --allow-tool "shell" -p "summarise the repo"'}
+  - id: blind-spot/copilot-piped-stdin
+    kind: blind-spot
+    quote: {source: rule, text: "A Copilot prompt piped on stdin carries no headless flag and is not matched"}
+    expect: no-match
+    events:
+      - {_note: "the prompt arrives on stdin from a pipe", ParentImage: /bin/sh, Image: /usr/local/bin/copilot, CommandLine: "copilot --yolo"}
+  - id: catches/copilot-headless-p-last
+    kind: catches
+    quote: {source: rule, text: "its headless flags also include -p at the end of the line and --acp"}
+    expect: match
+    events:
+      - {_note: "-p last, prompt on stdin", Image: /usr/local/bin/copilot, CommandLine: "copilot --yolo -p"}
+  - id: catches/copilot-acp
+    kind: catches
+    quote: {source: rule, text: "its headless flags also include -p at the end of the line and --acp"}
+    rationale: "--acp starts the CLI as an Agent Client Protocol server: https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference"
+    expect: match
+    events:
+      - {Image: /usr/local/bin/copilot, CommandLine: "copilot --acp --yolo"}
+  - id: catches/cursor-force-linux
+    kind: catches
+    quote: {source: rule, text: "The Cursor CLI matches as node running index.js from a cursor-agent folder, with --force, -f or --yolo"}
+    expect: match
+    events:
+      - {_note: "the bash launcher runs exec -a on the bundled node, so the command line starts with the invoked path", Image: /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/node, CommandLine: '/home/dev/.local/bin/agent --use-system-ca /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/index.js --force "summarise the repo"'}
+  - id: catches/cursor-yolo-windows
+    kind: catches
+    quote: {source: rule, text: "The Cursor CLI matches as node running index.js from a cursor-agent folder, with --force, -f or --yolo"}
+    expect: match
+    events:
+      - {_note: "the node.exe row at the end of the cmd.exe and powershell.exe shim chain", Image: 'C:\Users\dev\AppData\Local\cursor-agent\versions\2026.10.22-27dcf5f\node.exe', CommandLine: '"C:\Users\dev\AppData\Local\cursor-agent\versions\2026.10.22-27dcf5f\node.exe" C:\Users\dev\AppData\Local\cursor-agent\versions\2026.10.22-27dcf5f\index.js --yolo -p "summarise the repo"'}
+  - id: catches/cursor-short-f
+    kind: catches
+    quote: {source: rule, text: "The Cursor CLI matches as node running index.js from a cursor-agent folder, with --force, -f or --yolo"}
+    expect: match
+    events:
+      - {_note: "-f before the prompt", Image: /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/node, CommandLine: '/home/dev/.local/bin/agent --use-system-ca /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/index.js -f "summarise the repo"'}
+      - {_note: "-f last on the line", Image: /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/node, CommandLine: '/home/dev/.local/bin/agent --use-system-ca /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/index.js -p "summarise the repo" -f'}
+  - id: catches/cursor-interactive-yolo
+    kind: catches
+    quote: {source: rule, text: "Cursor's branch needs no headless flag, because the CLI is headless whenever stdin or stdout is not a terminal, so an interactive Run Everything session also matches"}
+    expect: match
+    events:
+      - {_note: "no -p: from a postinstall script this run is headless, from a terminal it is interactive", Image: /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/node, CommandLine: '/home/dev/.local/bin/agent --use-system-ca /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/index.js --yolo'}
+  - id: catches/cursor-gemini-model
+    kind: catches
+    quote: {source: rule, text: "A Cursor run with a Gemini model (--model gemini-2.5-pro --yolo -p) also satisfies the node Gemini branch"}
+    expect: match
+    events:
+      - {Image: /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/node, CommandLine: '/home/dev/.local/bin/agent --use-system-ca /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/index.js --model gemini-2.5-pro --yolo -p "summarise the repo"'}
+  - id: near-miss/cursor-no-bypass
+    kind: near-miss
+    rationale: "Cursor headless with its approvals left on is ordinary scripted use"
+    expect: no-match
+    events:
+      - {Image: /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/node, CommandLine: '/home/dev/.local/bin/agent --use-system-ca /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/index.js -p "summarise the repo"'}
+  - id: near-miss/cursor-shim-powershell
+    kind: near-miss
+    quote: {source: rule, text: "Keying on node, not on the cmd.exe and powershell.exe shims or the bash launcher that carry the same flags, avoids repeat alerts for one launch."}
+    rationale: "The Windows shim passes the same flags on to node.exe; only the node.exe row matches, so one launch gives one alert"
+    expect: no-match
+    events:
+      - {_note: "the PowerShell shim row, not node", Image: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe', CommandLine: 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Users\dev\AppData\Local\cursor-agent\cursor-agent.ps1 --force'}
+  - id: blind-spot/cursor-approval-mode-config
+    kind: blind-spot
+    quote: {source: rule, text: "approvalMode \"unrestricted\" in the user's cli-config.json switches approvals off with nothing on the command line and is not seen"}
+    expect: no-match
+    events:
+      - {_note: "approvalMode unrestricted set in cli-config.json, nothing on argv", Image: /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/node, CommandLine: '/home/dev/.local/bin/agent --use-system-ca /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/index.js -p "summarise the repo"'}
+  - id: catches/devin-dangerous
+    kind: catches
+    quote: {source: rule, text: 'Devin CLI matches as devin from a bin folder (/bin/devin or \bin\devin.exe, never the Devin.exe editor) with --permission-mode dangerous, yolo or bypass'}
+    expect: match
+    events:
+      - {_note: "standalone CLI on Linux; the image resolves to the versions folder", Image: /home/dev/.local/share/devin/cli/_versions/3000.11.228/bin/devin, CommandLine: 'devin --permission-mode dangerous -p "summarise the repo"'}
+      - {_note: "the mode last on the line", Image: /home/dev/.local/share/devin/cli/_versions/3000.11.228/bin/devin, CommandLine: 'devin --print "summarise the repo" --permission-mode dangerous'}
+  - id: catches/devin-yolo-equals
+    kind: catches
+    quote: {source: rule, text: "written with a space or =, and followed by a space or the end of the line, and -p or --print"}
+    expect: match
+    events:
+      - {Image: /home/dev/.local/share/devin/cli/_versions/3000.11.228/bin/devin, CommandLine: 'devin --permission-mode=yolo -p "summarise the repo"'}
+  - id: catches/devin-bypass-windows
+    kind: catches
+    quote: {source: rule, text: 'Devin CLI matches as devin from a bin folder (/bin/devin or \bin\devin.exe, never the Devin.exe editor) with --permission-mode dangerous, yolo or bypass'}
+    expect: match
+    events:
+      - {_note: "standalone CLI on Windows, the PATH copy", Image: 'C:\Users\dev\AppData\Local\devin\cli\bin\devin.exe', CommandLine: '"C:\Users\dev\AppData\Local\devin\cli\bin\devin.exe" --permission-mode bypass -p "summarise the repo"'}
+  - id: near-miss/devin-editor-image
+    kind: near-miss
+    rationale: "The Devin Desktop editor is Devin.exe at the install root, not in a bin folder; a bare devin.exe match would catch it without case"
+    expect: no-match
+    events:
+      - {_note: "the editor image with the same words on its command line", Image: 'C:\Program Files\Devin\Devin.exe', CommandLine: '"C:\Program Files\Devin\Devin.exe" --permission-mode dangerous -p "summarise the repo"'}
+  - id: near-miss/devin-mode-word-in-prompt
+    kind: near-miss
+    rationale: "The mode words sit inside the prompt, ending at its closing quote, and the real mode is autonomous; the rule needs a space or the end of the line after the mode word"
+    expect: no-match
+    events:
+      - {_note: "relies on the prompt's closing quote being recorded, as Windows-style command-line recording does; a Linux or macOS argv sensor strips the quotes, the mode word is then followed by a space, and the rule matches (the prompt-text false positive)", Image: /home/dev/.local/share/devin/cli/_versions/3000.11.228/bin/devin, CommandLine: 'devin -p "explain --permission-mode dangerous" --permission-mode autonomous'}
+  - id: near-miss/devin-interactive
+    kind: near-miss
+    rationale: "Bypass without -p or --print is an interactive session"
+    expect: no-match
+    events:
+      - {Image: /home/dev/.local/share/devin/cli/_versions/3000.11.228/bin/devin, CommandLine: "devin --permission-mode dangerous"}
+  - id: blind-spot/devin-env-mode
+    kind: blind-spot
+    quote: {source: rule, text: "the DEVIN_PERMISSION_MODE environment variable"}
+    expect: no-match
+    events:
+      - {_note: "DEVIN_PERMISSION_MODE=dangerous set in the environment, nothing on argv", Image: /home/dev/.local/share/devin/cli/_versions/3000.11.228/bin/devin, CommandLine: 'devin -p "summarise the repo"'}
+  - id: false-positive/prompt-text-flag
+    kind: false-positive
+    quote: {source: rule, text: "Prompt text that itself contains a matched flag"}
+    expect: match
+    events:
+      - {_note: "interactive Cursor run with no bypass, but the prompt contains rm -f", Image: /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/node, CommandLine: '/home/dev/.local/bin/agent --use-system-ca /home/dev/.local/share/cursor-agent/versions/2026.10.22-27dcf5f/index.js "fix the rm -f call in deploy.sh"'}
+      - {_note: "a Copilot prompt that quotes the shell grant", Image: /usr/local/bin/copilot, CommandLine: 'copilot -p "explain what --allow-tool shell does"'}
+      - {_note: "a Devin prompt that quotes the mode", Image: /home/dev/.local/share/devin/cli/_versions/3000.11.228/bin/devin, CommandLine: 'devin -p "explain what --permission-mode dangerous does"'}
