@@ -24,9 +24,21 @@ sentences:
   - starts: "Detection 3 cannot tell an agent from the developer typing in the same terminal"
     disposition: context
     reason: "The hunt's scope by design; its KQL claims are not executed, so a tested entry cannot rest on them, and the query has no field that names the agent"
-  - starts: "The KQL hunt has been parse-checked with the Kusto language service"
+  - starts: "Defender for Endpoint may cover part of that gap."
     disposition: context
-    reason: "Validation status; the Claims Ledger itself reports the editor-terminal-risky-command claims as not-executed"
+    reason: "Points to a telemetry source outside these detections; no rule or query in the pack uses it, so there is nothing to execute"
+  - starts: "Its DeviceEvents table has an action type, SensitiveFileRead"
+    disposition: context
+    reason: "A sourcing statement about Microsoft's documentation; nothing to execute"
+  - starts: "The Defender portal's built-in schema reference (checked 2026-10-28)"
+    disposition: context
+    reason: "The splitter does not break after the closing quote, so this joins the next sentence. Both are sourcing statements: the portal's description, and what no public source settles; nothing to execute"
+  - starts: "We have not seen it record an agent reading a credential"
+    disposition: prerequisite
+    reason: "Needs a Defender tenant with coding agents and developer credentials; synthetic events cannot settle what the sensor records"
+  - starts: "Before you build on it, run this in your own tenant"
+    disposition: context
+    reason: "The splitter skips the inline query and joins this sentence to the next. The first half is advice with an ad hoc query that is not a pack file; the second half is validation status, and the Claims Ledger itself reports the editor-terminal-risky-command claims as not-executed"
   - starts: "None of the three detections has been run against a sensor capture on any OS"
     disposition: prerequisite
     reason: "Needs a sensor capture; synthetic events cannot settle real process names, process trees or recorded command-line forms"
