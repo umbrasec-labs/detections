@@ -13,6 +13,14 @@ sentences:
   - starts: "The Claude Code wrapper string that Detection 2 matches comes from watching Claude Code 2.1.310"
     disposition: context
     reason: "A sourcing statement; the wrapper match itself is proved by ai-agent-shell-risky-command catches/claude-wrapper-linux, which quotes the rule's own copy of this limitation"
+  - starts: "Detection 2's filter for Claude Code's Linux sandbox drops a row that starts with"
+    disposition: tested
+    claims:
+      - ai-agent-shell-risky-command/excluded/claude-sandbox-wrapper-rows-decoy-read
+    reason: "Proved against ai-agent-shell-risky-command: the two sandbox wrapper rows of a decoy credential read, which carry the read itself, stay no-match; the same read is caught on the inner rows (catches/claude-sandbox-inner-rows-decoy-read)"
+  - starts: "On macOS the sandbox uses another wrapper, sandbox-exec, which has not been captured"
+    disposition: prerequisite
+    reason: "Needs a capture of Claude Code's sandbox on macOS; what sandbox-exec's rows look like is not known, so there is no event shape to synthesise"
   - starts: "Credential access is seen only when a credential file or token command is named on a command line."
     disposition: tested
     claims:
@@ -41,7 +49,7 @@ sentences:
     reason: "The splitter skips the inline query and joins this sentence to the next. The first half is advice with an ad hoc query that is not a pack file; the second half is validation status, and the Claims Ledger itself reports the editor-terminal-risky-command claims as not-executed"
   - starts: "None of the three detections has been run against a sensor capture on any OS"
     disposition: prerequisite
-    reason: "Needs a sensor capture; synthetic events cannot settle real process names, process trees or recorded command-line forms"
+    reason: "Needs a sensor capture; the one local capture is a strace trace of Claude Code 2.1.312 on Linux, whose sandbox rows the claims reproduce in redacted form, and synthetic events cannot settle real process names, process trees or recorded command-line forms"
   - starts: "Both Sigma rules pass their claims on synthetic events built from the cited sources"
     disposition: context
     reason: "Restates what the Claims Ledger proves and does not prove, as the detections README says"

@@ -1,10 +1,10 @@
 schema: umbrasec.claims/v1
 rule: rules/windows/kerberoasting-spn-fanout.yml
 rule_id: 1c9d4b77-2e55-4f01-bb3a-6d8e9f0a1b22
-rule_sha256: f7634a9cae940b6e7d1457278ec2ccf1da334a63b303040aa177e7a98cf16628
+rule_sha256: 3248feff8b1273ad45f49c791d5597304f26aefd9bf901eeb8b866f8e296f19c
 engine: sigma
 writeup: research/detecting-kerberoasting.html
-reviewed: 2026-10-25
+reviewed: 2026-10-29
 # The rule is a value_count correlation, so every claim runs in sequence mode:
 # all events go into one table and expect applies to the set.
 event_defaults:
@@ -55,10 +55,54 @@ claims:
                template: {EventID: 4769, Status: "0x0", TargetUserName: alice, ServiceName: "MSSQLSvc/sql01"}}
   - id: near-miss/machine-account
     kind: near-miss
-    rationale: "Requesters ending in $ are computer accounts, removed by the base rule's filter_machine"
+    rationale: "A requester ending in $ is a computer account as a sensor that strips the realm records it, removed by the base rule's filter_machine"
     expect: no-match
     generate: {count: 15, start: "2026-10-23T10:00:00Z", step_seconds: 1,
                template: {EventID: 4769, Status: "0x0", TargetUserName: HOST$, ServiceName: "MSSQLSvc/sql{i:02d}"}}
+  - id: catches/realm-form-user-requester
+    kind: catches
+    quote: {source: rule, text: "requested Kerberos service tickets (4769) for an unusually large number of distinct service principals in a short window"}
+    expect: match
+    generate: {count: 15, start: "2026-10-23T10:00:00Z", step_seconds: 10,
+               template: {_note: "the requester as Windows writes it, name@REALM (Microsoft event 4769 reference; the public EVTX-to-MITRE-Attack 4769 samples); a user account is not dropped by the computer-account filter; Windows writes the realm in upper case, kept lower case here for the repo's PII scan, and the match is case-insensitive", EventID: 4769, Status: "0x0", TargetUserName: "alice@corp.example", ServiceName: "MSSQLSvc/sql{i:02d}"}}
+  - id: near-miss/machine-account-realm-form
+    kind: near-miss
+    rationale: "Windows writes a computer account requester as HOST$@REALM (Microsoft event 4769 reference: WIN81$@CONTOSO.LOCAL; the public EVTX-to-MITRE-Attack 4769 samples), which never ends in $; filter_machine drops it on $@"
+    expect: no-match
+    generate: {count: 15, start: "2026-10-23T10:00:00Z", step_seconds: 1,
+               template: {EventID: 4769, Status: "0x0", TargetUserName: "HOST$@corp.example", ServiceName: "MSSQLSvc/sql{i:02d}"}}
+  - id: near-miss/computer-account-service-burst
+    kind: near-miss
+    rationale: "Tickets for computer accounts (ServiceName ending in $) are dropped by the base rule's filter_machine_service, the RC4 rule's filter; a burst of host tickets is not Kerberoasting of service accounts"
+    expect: no-match
+    generate: {count: 20, start: "2026-10-23T10:00:00Z", step_seconds: 3,
+               template: {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST{i:02d}$"}}
+  - id: near-miss/bloodhound-host-enumeration-shape
+    kind: near-miss
+    rationale: "The shape of the public EVTX-to-MITRE-Attack sample 'ID4769-Kerberos TGS host enumeration (Bloodhound)': one user account, 17 distinct service names in one minute, all computer accounts or krbtgt; filter_machine_service and filter_krbtgt drop every ticket"
+    expect: no-match
+    events:
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST01$", timestamp: "2026-10-23T10:00:00Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST02$", timestamp: "2026-10-23T10:00:02Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST03$", timestamp: "2026-10-23T10:00:04Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST04$", timestamp: "2026-10-23T10:00:06Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST05$", timestamp: "2026-10-23T10:00:08Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST06$", timestamp: "2026-10-23T10:00:10Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST07$", timestamp: "2026-10-23T10:00:12Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST08$", timestamp: "2026-10-23T10:00:14Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST09$", timestamp: "2026-10-23T10:00:16Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST10$", timestamp: "2026-10-23T10:00:18Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST11$", timestamp: "2026-10-23T10:00:20Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST12$", timestamp: "2026-10-23T10:00:22Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST13$", timestamp: "2026-10-23T10:00:24Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST14$", timestamp: "2026-10-23T10:00:26Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST15$", timestamp: "2026-10-23T10:00:28Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: "HOST16$", timestamp: "2026-10-23T10:00:30Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: krbtgt, timestamp: "2026-10-23T10:00:32Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: krbtgt, timestamp: "2026-10-23T10:00:34Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: krbtgt, timestamp: "2026-10-23T10:00:36Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: krbtgt, timestamp: "2026-10-23T10:00:38Z"}
+      - {EventID: 4769, Status: "0x0", TargetUserName: "bob@corp.example", ServiceName: krbtgt, timestamp: "2026-10-23T10:00:40Z"}
   - id: near-miss/failed-requests
     kind: near-miss
     rationale: "The base rule counts only issued tickets (Status 0x0)"
