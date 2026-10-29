@@ -1,10 +1,10 @@
 schema: umbrasec.claims/v1
 rule: rules/windows/ransomware-inhibit-recovery-native-utilities.yml
 rule_id: b82fbb2c-3738-47c8-a238-8c63116ccf5a
-rule_sha256: 9680f84ff72cecdc0602a73c139ba7a4e8f0ddf86133863ab258812e10006524
+rule_sha256: e51e29beb52f36dbeec35f766cb94a378f53ab8f35cc1973ae5c86ec4c890b5c
 engine: sigma
 writeup: research/safepay-australian-smb.html
-reviewed: 2026-10-25
+reviewed: 2026-10-29
 event_defaults:
   _synthetic: true
 fp_dispositions: []
