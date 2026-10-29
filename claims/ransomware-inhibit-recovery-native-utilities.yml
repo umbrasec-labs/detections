@@ -1,7 +1,7 @@
 schema: umbrasec.claims/v1
 rule: rules/windows/ransomware-inhibit-recovery-native-utilities.yml
 rule_id: b82fbb2c-3738-47c8-a238-8c63116ccf5a
-rule_sha256: e51e29beb52f36dbeec35f766cb94a378f53ab8f35cc1973ae5c86ec4c890b5c
+rule_sha256: 60273ca9fb4c29daa71582dc333fbc61a5da430326be34070bc9e7fe70327a7f
 engine: sigma
 writeup: research/safepay-australian-smb.html
 reviewed: 2026-10-29
@@ -28,6 +28,35 @@ claims:
     expect: match
     events:
       - {_note: "the indicator tokens only", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete catalog"}
+  - id: catches/wbadmin-delete-backups
+    kind: catches
+    quote: {source: rule, text: "or the backups themselves"}
+    expect: match
+    events:
+      - {_note: "delete backup -deleteOldest, as in the public EVTX-to-MITRE-Attack 4688 sample", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: 'wbadmin  delete backup -backupTarget:m:\ -deleteOldest'}
+      - {_note: "delete every system state backup, the Atomic Red Team T1490 test", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete systemstatebackup -keepVersions:0"}
+      - {_note: "the LockBit, Avaddon and Ranzy command line", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin DELETE SYSTEMSTATEBACKUP -deleteOldest"}
+  - id: catches/wbadmin-backup-substring
+    kind: catches
+    quote: {source: rule, text: "so it covers delete systemstatebackup as well as delete backup"}
+    expect: match
+    events:
+      - {_note: "systemstatebackup contains backup; no switch", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin DELETE SYSTEMSTATEBACKUP"}
+  - id: catches/wbadmin-delete-in-path-backup
+    kind: catches
+    quote: {source: rule, text: 'path, also fires if it contains "backup" (the start backup, enable backup and start systemstatebackup verbs, or a -backupTarget switch)'}
+    expect: match
+    events:
+      - {_note: "a restore: delete sits in the item path and backup in -backupTarget", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: 'wbadmin start recovery -version:03/31/2013-09:00 -itemType:File -items:D:\ToDelete -backupTarget:E:'}
+      - {_note: "a scheduled backup with no -backupTarget: delete sits in the include path and backup in the verb", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: 'wbadmin enable backup -addtarget:E: -include:D:\Deleted -schedule:03:00'}
+      - {_note: "a one-off backup: delete in the include path", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: 'wbadmin start backup -backupTarget:E: -include:C:\ToDelete -quiet'}
+      - {_note: "a system state backup to a share whose name holds delete", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: 'wbadmin start systemstatebackup -backupTarget:\\srv\deleted'}
+  - id: catches/wbadmin-delete-in-path-catalog
+    kind: catches
+    quote: {source: rule, text: 'or "catalog" (restore catalog).'}
+    expect: match
+    events:
+      - {_note: "restoring the catalog from a share whose name holds delete", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: 'wbadmin restore catalog -backupTarget:\\srv\deleted'}
   - id: catches/bcdedit-ignore-boot-failures
     kind: catches
     quote: {source: rule, text: "bcdedit telling the boot loader to ignore boot failures"}
@@ -68,6 +97,7 @@ claims:
       - {_note: "renamed vssadmin", Image: 'C:\Users\Public\v.exe', OriginalFileName: VSSADMIN.EXE, CommandLine: "v.exe delete shadows"}
       - {_note: "renamed wmic", Image: 'C:\Users\Public\w.exe', OriginalFileName: wmic.exe, CommandLine: "w.exe shadowcopy delete"}
       - {_note: "renamed wbadmin", Image: 'C:\Users\Public\b.exe', OriginalFileName: WBADMIN.EXE, CommandLine: "b.exe delete catalog"}
+      - {_note: "renamed wbadmin deleting every system state backup", Image: 'C:\Users\Public\b.exe', OriginalFileName: WBADMIN.EXE, CommandLine: "b.exe delete systemstatebackup -keepVersions:0"}
       - {_note: "renamed bcdedit", Image: 'C:\Users\Public\c.exe', OriginalFileName: bcdedit.exe, CommandLine: "c.exe /set {default} recoveryenabled no"}
   - id: excluded/parent-shell
     kind: excluded
@@ -76,6 +106,7 @@ claims:
     events:
       - {_note: "the cmd.exe that launched vssadmin carries the same words", Image: 'C:\Windows\System32\cmd.exe', OriginalFileName: Cmd.Exe, CommandLine: "cmd.exe /c vssadmin delete shadows"}
       - {_note: "the cmd.exe that launched bcdedit", Image: 'C:\Windows\System32\cmd.exe', OriginalFileName: Cmd.Exe, CommandLine: "cmd.exe /c bcdedit /set {default} recoveryenabled no"}
+      - {_note: "the cmd.exe that launched wbadmin, the parent in SigmaHQ's regression sample", Image: 'C:\Windows\System32\cmd.exe', OriginalFileName: Cmd.Exe, CommandLine: '"cmd.exe" /c wbadmin delete systemstatebackup -keepVersions:0'}
   - id: false-positive/admin-oldest-snapshot
     kind: false-positive
     quote: {source: rule, text: "An administrator running vssadmin delete shadows /for=<volume> /oldest"}
@@ -88,6 +119,19 @@ claims:
     expect: match
     events:
       - {_note: "an administrator clearing a corrupted catalog", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete catalog"}
+  - id: false-positive/wbadmin-keep-latest
+    kind: false-positive
+    quote: {source: rule, text: "running wbadmin delete backup or delete systemstatebackup to keep only the latest backups"}
+    expect: match
+    events:
+      - {_note: "Microsoft's example: keep the three most recent system state backups", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete systemstatebackup -keepVersions:3"}
+      - {_note: "Microsoft's example: delete the oldest system state backup on f:", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: 'wbadmin delete systemstatebackup -backupTarget:f:\ -deleteOldest'}
+  - id: false-positive/wbadmin-retention-fires-high
+    kind: false-positive
+    quote: {source: rule, text: "a scheduled retention task with -keepVersions:N (N above 0) fires at high on every run"}
+    expect: match
+    events:
+      - {_note: "a nightly retention task keeping the two newest backups on E:", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete backup -keepVersions:2 -backupTarget:E: -quiet"}
   - id: false-positive/backup-agent-cleanup
     kind: false-positive
     quote: {source: rule, text: "Backup or imaging software whose agent runs vssadmin delete shadows to clean up its own snapshots"}
@@ -131,13 +175,12 @@ claims:
     expect: no-match
     events:
       - {Image: 'C:\Windows\System32\ReAgentc.exe', CommandLine: "reagentc /disable"}
-  - id: blind-spot/wbadmin-delete-backup
+  - id: blind-spot/remove-wbbackupset
     kind: blind-spot
-    quote: {source: rule, text: "wbadmin delete backup or systemstatebackup"}
+    quote: {source: rule, text: "Remove-WBBackupSet in PowerShell"}
     expect: no-match
     events:
-      - {_note: "delete backup, not delete catalog", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete backup"}
-      - {_note: "delete systemstatebackup, not delete catalog", Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin delete systemstatebackup"}
+      - {_note: "the cmdlet name and switches only, not a working command", Image: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe', CommandLine: "powershell Remove-WBBackupSet -DeleteOldest -Force"}
   - id: blind-spot/vss-api-writeup
     kind: blind-spot
     quote: {source: writeup, text: "It reads command lines only, so shadow copies removed through the VSS API or by stopping the service get past it."}
@@ -159,6 +202,14 @@ claims:
       - {Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: "bcdedit /set {default} recoveryenabled yes"}
       - {Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: "bcdedit /enum"}
       - {Image: 'C:\Windows\System32\bcdedit.exe', CommandLine: "bcdedit /set {default} bootstatuspolicy displayallfailures"}
+  - id: near-miss/wbadmin-without-delete
+    kind: near-miss
+    rationale: "Taking or listing backups deletes nothing; backup appears but delete does not"
+    expect: no-match
+    events:
+      - {Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin get versions -backupTarget:f:"}
+      - {Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin start backup -backupTarget:f: -include:c: -quiet"}
+      - {Image: 'C:\Windows\System32\wbadmin.exe', CommandLine: "wbadmin start systemstatebackup -backupTarget:f:"}
   - id: catches/delete-shadowstorage-substring
     kind: catches
     quote: {source: rule, text: 'The vssadmin check matches "delete" and "shadows" as substrings, so a vssadmin delete shadowstorage command line also fires.'}
