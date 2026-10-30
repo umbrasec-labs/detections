@@ -31,7 +31,7 @@ sentences:
     reason: "A telemetry-availability statement: a built-in tool read starts no process and Sysmon has no read event, so there is no event to synthesise"
   - starts: "Detection 3 cannot tell an agent from the developer typing in the same terminal"
     disposition: context
-    reason: "The hunt's scope by design; its KQL claims are not executed, so a tested entry cannot rest on them, and the query has no field that names the agent"
+    reason: "The hunt's scope by design; its KQL claims are not executed, so a tested entry cannot rest on them, and the Source column names the agent only for agent shells: a vscode-terminal row cannot be told from the developer"
   - starts: "Defender for Endpoint may cover part of that gap."
     disposition: context
     reason: "Points to a telemetry source outside these detections; no rule or query in the pack uses it, so there is nothing to execute"
@@ -46,7 +46,7 @@ sentences:
     reason: "Needs a Defender tenant with coding agents and developer credentials; synthetic events cannot settle what the sensor records"
   - starts: "Before you build on it, run this in your own tenant"
     disposition: context
-    reason: "The splitter skips the inline query and joins this sentence to the next. The first half is advice with an ad hoc query that is not a pack file; the second half is validation status, and the Claims Ledger itself reports the editor-terminal-risky-command claims as not-executed"
+    reason: "The splitter skips the inline query and joins this sentence to the next. The first half is advice with an ad hoc query that is not a pack file; the second half is validation status, and the Claims Ledger itself reports the all-agent-shells-risky-command claims as not-executed"
   - starts: "None of the three detections has been run against a sensor capture on any OS"
     disposition: prerequisite
     reason: "Needs a sensor capture; the one local capture is a strace trace of Claude Code 2.1.312 on Linux, whose sandbox rows the claims reproduce in redacted form, and synthetic events cannot settle real process names, process trees or recorded command-line forms"
