@@ -1,0 +1,233 @@
+schema: umbrasec.claims/v1
+rule: rules/cross-platform/ai-agent-config-changed-by-command.yml
+rule_id: 6d1f0c2e-3a47-4b8e-9f15-2c7e8a90b1d3
+rule_sha256: 5563926229441fc85ec1dfa8c0f65b7fd4660548900221ab7f636cce32c1e70a
+engine: sigma
+writeup: research/detecting-hijacked-ai-coding-agents.html
+reviewed: 2026-10-30
+# Wrapper command lines reuse the shapes of the ai-agent-shell-risky-command claims. The
+# install rows come from a local trace of npm 12.2.0 on Linux (strace, stub claude, tarball
+# package): the argv, the parent argv and the chdir are observed, the Sysmon field names
+# are assumed. No event comes from a sensor capture.
+event_defaults:
+  _synthetic: true
+fp_dispositions:
+  - bullet: "Tune by allowlisting an exact command per repository"
+    disposition: advice
+    reason: "Tuning advice; there is no event shape to reproduce"
+claims:
+  - id: catches/claude-wrapper-sed-settings
+    kind: catches
+    quote: {source: rule, text: "A shell started by an AI coding agent changed a file that decides what the agent runs or what it may do without asking"}
+    expect: match
+    events:
+      - {_note: "Claude Code wrapper with the command on the shell's own line, parent left out", Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'sed -i s/old/new/ .claude/settings.json' < /dev/null && pwd -P >| /tmp/claude-1000/cwd-4f2a"}
+      - {_note: "Gemini CLI wrapper and a Codex path", Image: /bin/bash, CommandLine: "bash -c shopt -u promptvars nullglob extglob nocaseglob dotglob; sed -i s/old/new/ ~/.codex/config.toml"}
+  - id: catches/redirect-straight-before-path
+    kind: catches
+    quote: {source: rule, text: "a redirect with the path straight after the > sign, relative or starting ~/, for the eleven paths most used for this."}
+    expect: match
+    events:
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cat > .mcp.json' < /dev/null"}
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cat >> ~/.cursor/mcp.json' < /dev/null"}
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cat >.vscode/tasks.json' < /dev/null"}
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cat >~/.claude/settings.json' < /dev/null"}
+      - {_note: "a backslash path on a child row, a shape", ParentImage: 'C:\Tools\codex.exe', Image: 'C:\Windows\System32\cmd.exe', CommandLine: 'cmd /c type new.json > .claude\settings.json'}
+  - id: catches/child-row-of-agent-parent
+    kind: catches
+    quote: {source: rule, text: "tee, mv, cp, or PowerShell's Set-Content, Add-Content, Out-File, Copy-Item or Move-Item"}
+    expect: match
+    events:
+      - {_note: "the program's own row under the Claude Code versions folder, so the line starts with mv", ParentImage: /home/dev/.local/share/claude/versions/2.1.314, Image: /usr/bin/mv, CommandLine: "mv /tmp/new.json .cursor/mcp.json"}
+      - {_note: "full program path", ParentImage: /usr/local/bin/codex, Image: /usr/bin/cp, CommandLine: "/usr/bin/cp /tmp/new.json .claude/settings.local.json"}
+      - {_note: "a pipe into tee", ParentImage: /usr/local/bin/codex, Image: /bin/sh, CommandLine: "sh -c 'cat /tmp/new | tee .gemini/settings.json'"}
+      - {_note: "tee first inside the quotes", ParentImage: /usr/local/bin/codex, Image: /bin/bash, CommandLine: "bash -lc 'tee .mcp.json'"}
+      - {_note: "the -Ei spelling", ParentImage: /usr/local/bin/codex, Image: /usr/bin/sed, CommandLine: "sed -Ei s/old/new/ .cursor/hooks.json"}
+      - {_note: "Windows separators and a PowerShell cmdlet under the Kilo Code prologue; the cmdlet form is a shape, not seen in a capture", Image: 'C:\Program Files\PowerShell\7\pwsh.exe', CommandLine: 'pwsh -c [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false); Set-Content -Path .claude\settings.json -Value $v'}
+  - id: catches/copilot-parent
+    kind: catches
+    quote: {source: rule, text: "The agent is recognised with the same selections as ai-agent-shell-risky-command, so the same agents are covered and missed"}
+    expect: match
+    events:
+      - {ParentImage: /usr/local/bin/copilot, Image: /bin/bash, CommandLine: "bash --norc --noprofile -c 'cp /tmp/x .copilot/mcp-config.json'"}
+  - id: catches/mcp-add-under-agent-shell
+    kind: catches
+    quote: {source: rule, text: "or a coding agent's mcp add command ran under an agent shell or from inside a package's folder under node_modules."}
+    expect: match
+    events:
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'claude mcp add demo -- /usr/local/bin/demo' < /dev/null"}
+      - {_note: "add-json form", Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'claude mcp add-json demo {}' < /dev/null"}
+      - {_note: "editor CLI form", ParentImage: /usr/local/bin/codex, Image: /usr/bin/code, CommandLine: "code --add-mcp {}"}
+  - id: catches/mcp-add-install-folder
+    kind: catches
+    quote: {source: rule, text: "An mcp add from a package install is seen by CurrentDirectory, the only trace of the install on that row"}
+    expect: match
+    events:
+      - {_note: "execSync: observed argv and parent argv; npm 12.2.0, strace, stub claude", Image: /home/dev/.local/bin/claude, CommandLine: "claude mcp add demo -- /bin/true", ParentCommandLine: "/bin/sh -c claude mcp add demo -- /bin/true", CurrentDirectory: /home/dev/app/node_modules/demo-pkg}
+      - {_note: "execFileSync: the parent is the install script itself", Image: /home/dev/.local/bin/claude, CommandLine: "claude mcp add demo2 -- /bin/true", ParentCommandLine: "node setup.js", CurrentDirectory: /home/dev/app/node_modules/demo-pkg}
+  - id: false-positive/asked-to-add-a-server
+    kind: false-positive
+    quote: {source: rule, text: "A developer asked the agent to add an MCP server or edit its settings"}
+    expect: match
+    events:
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'claude mcp add --scope project docs -- npx -y docs-server' < /dev/null"}
+  - id: false-positive/package-registers-own-server
+    kind: false-positive
+    quote: {source: rule, text: "A package that registers its own MCP server when installed"}
+    expect: match
+    events:
+      - {Image: /home/dev/.local/bin/claude, CommandLine: "claude mcp add docs -- node server.js", ParentCommandLine: "node install.js", CurrentDirectory: /home/dev/app/node_modules/docs-server}
+  - id: false-positive/copy-elsewhere
+    kind: false-positive
+    quote: {source: rule, text: "Copying a config file somewhere else, such as cp .mcp.json /tmp/backup"}
+    expect: match
+    events:
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/cp, CommandLine: "cp .mcp.json /tmp/backup"}
+  - id: false-positive/template-over-config
+    kind: false-positive
+    quote: {source: rule, text: "Copying a template over a config file during project setup"}
+    expect: match
+    events:
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/cp, CommandLine: "cp .mcp.json.example .mcp.json"}
+  - id: false-positive/text-names-path-and-write
+    kind: false-positive
+    quote: {source: rule, text: "A heredoc or echo whose text names a listed path and a write command, or an mcp add"}
+    expect: match
+    events:
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'echo \"use tee to update .mcp.json\"' < /dev/null"}
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'echo \"run claude mcp add docs\"' < /dev/null"}
+  - id: false-positive/read-piped-into-tee
+    kind: false-positive
+    quote: {source: rule, text: "A read piped into tee, such as cat .mcp.json | tee /tmp/x"}
+    expect: match
+    events:
+      - {ParentImage: /usr/local/bin/codex, Image: /bin/sh, CommandLine: "sh -c 'cat .mcp.json | tee /tmp/x'"}
+  - id: false-positive/copy-to-longer-name
+    kind: false-positive
+    quote: {source: rule, text: "A copy to a name that starts with the config's name, such as cat .mcp.json > .mcp.json.bak"}
+    expect: match
+    events:
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cat .mcp.json > .mcp.json.bak' < /dev/null"}
+  - id: false-positive/own-hook-keeps-settings
+    kind: false-positive
+    quote: {source: rule, text: "A hook or script from the agent's own configuration that keeps its settings in step"}
+    expect: match
+    events:
+      - {ParentImage: /home/dev/.local/share/claude/versions/2.1.314, Image: /bin/sh, CommandLine: "/bin/sh -c 'sed -i s/old/new/ .vscode/settings.json'"}
+  - id: blind-spot/redirect-forms-not-listed
+    kind: blind-spot
+    quote: {source: rule, text: "A redirect with a quoted path, a ./ prefix, the >| form, or a full path such as /home/dev/.mcp.json is not seen."}
+    expect: no-match
+    events:
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cat > /home/dev/.mcp.json' < /dev/null"}
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cat > ./.mcp.json' < /dev/null"}
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cat >| .mcp.json' < /dev/null"}
+  - id: blind-spot/write-word-needs-a-separator
+    kind: blind-spot
+    quote: {source: rule, text: "so forms such as true;mv, or a line break before the word, are not seen."}
+    expect: no-match
+    events:
+      - {_note: "a multi-line command; the cp child row is not under an agent parent here", Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'set -e\ncp /tmp/new .mcp.json' < /dev/null"}
+  - id: blind-spot/file-dependency-folder
+    kind: blind-spot
+    quote: {source: rule, text: "nor a file: dependency, which runs in its source folder."}
+    expect: no-match
+    events:
+      - {_note: "the folder-link install from the local trace", Image: /home/dev/.local/bin/claude, CommandLine: "claude mcp add demo -- /bin/true", ParentCommandLine: "node setup.js", CurrentDirectory: /home/dev/app/pkgsrc}
+  - id: blind-spot/one-liners
+    kind: blind-spot
+    quote: {source: rule, text: "Python, node and jq one-liners do not count on their own"}
+    expect: no-match
+    events:
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/python3, CommandLine: "python3 /tmp/edit.py .mcp.json"}
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/node, CommandLine: "node /tmp/edit.js .claude/settings.json"}
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/jq, CommandLine: "jq . .mcp.json"}
+  - id: blind-spot/sensor-without-current-directory
+    kind: blind-spot
+    quote: {source: rule, text: "A sensor without CurrentDirectory does not see this branch"}
+    expect: no-match
+    events:
+      - {_note: "the row from the install trace with no CurrentDirectory field", Image: /home/dev/.local/bin/claude, CommandLine: "claude mcp add demo2 -- /bin/true", ParentCommandLine: "node setup.js"}
+  - id: blind-spot/script-sets-working-directory
+    kind: blind-spot
+    quote: {source: rule, text: "nor does a script that sets its own working directory"}
+    expect: no-match
+    events:
+      - {Image: /home/dev/.local/bin/claude, CommandLine: "claude mcp add demo2 -- /bin/true", ParentCommandLine: "node setup.js", CurrentDirectory: /home/dev}
+  - id: blind-spot/agent-own-write-tool
+    kind: blind-spot
+    quote: {source: rule, text: "an agent's own Write or Edit tool, which is its default route and starts no process"}
+    expect: no-match
+    events:
+      - {_note: "the only row a Write tool call leaves is the agent's own start, which names no path", Image: /home/dev/.local/share/claude/versions/2.1.314, CommandLine: "claude", ParentImage: /usr/bin/zsh}
+  - id: blind-spot/path-reached-by-cd
+    kind: blind-spot
+    quote: {source: rule, text: "a config path built from variables or reached by cd first"}
+    expect: no-match
+    events:
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cd .claude && sed -i s/old/new/ settings.json' < /dev/null"}
+  - id: near-miss/agent-reads-config
+    kind: near-miss
+    rationale: "Reading, listing and staging a config file is ordinary agent work and names no write form"
+    expect: no-match
+    events:
+      - {ParentImage: /usr/local/bin/codex, Image: /bin/cat, CommandLine: "cat .mcp.json"}
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'git add .mcp.json' < /dev/null && pwd -P >| /tmp/claude-1000/cwd-4f2a"}
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/sed, CommandLine: "sed -n 1,20p .claude/settings.json"}
+  - id: near-miss/redirect-elsewhere
+    kind: near-miss
+    rationale: "A redirect counts only with a listed path straight after the > sign, so reading a config into another file stays quiet, and so does the wrapper's own redirect"
+    expect: no-match
+    events:
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh 2>/dev/null && eval 'cat .mcp.json > /tmp/x' < /dev/null && pwd -P >| /tmp/claude-1000/cwd-4f2a"}
+  - id: near-miss/mcp-commands-that-change-nothing
+    kind: near-miss
+    rationale: "mcp list and mcp get change no config"
+    expect: no-match
+    events:
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'claude mcp list' < /dev/null"}
+      - {Image: /home/dev/.local/bin/claude, CommandLine: "claude mcp get demo", CurrentDirectory: /home/dev/app/node_modules/demo-pkg}
+  - id: near-miss/person-adds-a-server-in-a-terminal
+    kind: near-miss
+    rationale: "A person's own mcp add in a project folder has no agent and no node_modules folder; humans in their own terminal are out by design"
+    expect: no-match
+    events:
+      - {Image: /home/dev/.local/bin/claude, CommandLine: "claude mcp add docs -- npx -y docs-server", ParentImage: /usr/bin/zsh, ParentCommandLine: "-zsh", CurrentDirectory: /home/dev/app}
+  - id: near-miss/similar-words
+    kind: near-miss
+    rationale: "mcp add must end in a space, and sed -i must start a word"
+    expect: no-match
+    events:
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/node, CommandLine: "node test.js --name mcp address"}
+      - {ParentImage: /usr/local/bin/codex, Image: /bin/echo, CommandLine: "echo parsed -i .mcp.json"}
+  - id: near-miss/edit-of-another-file
+    kind: near-miss
+    rationale: "sed -i on project files is ordinary agent work"
+    expect: no-match
+    events:
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/sed, CommandLine: "sed -i s/old/new/ src/app.ts"}
+  - id: near-miss/shell-not-from-an-agent
+    kind: near-miss
+    rationale: "The same edit in a person's own terminal has no agent parent and no agent wrapper"
+    expect: no-match
+    events:
+      - {ParentImage: /usr/bin/zsh, Image: /usr/bin/sed, CommandLine: "sed -i s/old/new/ .claude/settings.json"}
+  - id: excluded/text-tools
+    kind: excluded
+    quote: {source: rule, text: "A line with grep, rg, git commit, git log, git diff or git show is dropped, because those search or record text that names these strings"}
+    expect: no-match
+    events:
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/grep, CommandLine: 'grep -n "claude mcp add" README.md'}
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/grep, CommandLine: 'grep -c "sed -i" .claude/settings.json'}
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/rg, CommandLine: 'rg " mcp add " docs'}
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'git commit -m \"docs: use tee to update .mcp.json\"' < /dev/null"}
+      - {Image: /usr/bin/zsh, CommandLine: "/usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'git diff .mcp.json | tee /tmp/d' < /dev/null"}
+      - {ParentImage: /usr/local/bin/codex, Image: /usr/bin/npm, CommandLine: 'npm test -- --grep " mcp add "'}
+      - {Image: /home/dev/.local/bin/claude, CommandLine: 'grep " mcp add " README.md', CurrentDirectory: /home/dev/app/node_modules/demo-pkg}
+  - id: excluded/claude-sandbox-wrapper-rows
+    kind: excluded
+    quote: {source: rule, text: "Claude Code's Linux sandbox wrapper rows list masked paths on the command line."}
+    expect: no-match
+    events:
+      - {_note: "a cut-down bwrap row with an invented command; the masked paths and the socat start-up are cut", Image: /usr/bin/bwrap, CommandLine: "bwrap --new-session --die-with-parent --unshare-net --setenv SANDBOX_RUNTIME 1 -- /usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cat > .mcp.json' < /dev/null"}
+      - {Image: /bin/sh, CommandLine: "/bin/sh -c bwrap --new-session --die-with-parent --unshare-net --setenv SANDBOX_RUNTIME 1 -- /usr/bin/zsh -c source /home/dev/.claude/shell-snapshots/snapshot-zsh-1761.sh && eval 'cat > .mcp.json' < /dev/null"}

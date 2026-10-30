@@ -1,0 +1,124 @@
+schema: umbrasec.claims/v1
+rule: queries/kql/ai-agent-config-file-writes.kql
+rule_id: null
+rule_sha256: d4059393a85f2b2a4bdf084d7d446d8f61582469041e0ee17604a2056359eecd
+engine: kusto
+writeup: research/detecting-hijacked-ai-coding-agents.html
+reviewed: 2026-10-30
+# Not executed: there is no Kusto engine in CI yet. Every event is one row of
+# DeviceFileEvents. The column names are Microsoft's; the ActionType values FileModified and
+# FileRenamed and the choice of what FolderPath holds are assumed, not seen. An event's
+# _expect_writer and _expect_target are the labels the query's case() should give it, checked
+# by a logic emulator outside this repo; the harness ignores them.
+# The query passed Kusto.Language 12.4.1 (Microsoft's parser) with 0 diagnostics against the
+# 59 DeviceFileEvents columns on Microsoft Learn; a misspelt copy gave 2 errors.
+event_defaults:
+  _synthetic: true
+  Timestamp: "2026-10-30T10:00:00Z"
+  ActionType: FileCreated
+  DeviceName: dev-laptop
+  DeviceId: d1
+  ReportId: 1
+  InitiatingProcessAccountName: dev
+  InitiatingProcessParentFileName: zsh
+  InitiatingProcessCommandLine: node setup.js
+claims:
+  - id: catches/runtime-adds-mcp-server
+    kind: catches
+    quote: {source: rule, text: "because a hook or MCP server added by node or a shell is what a malicious package looks like."}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {FileName: .mcp.json, FolderPath: /home/dev/app/.mcp.json, InitiatingProcessFileName: node, InitiatingProcessFolderPath: /usr/bin/node, _expect_writer: runtime, _expect_target: config}
+      - {_note: "FolderPath holding the folder only", FileName: mcp.json, FolderPath: 'C:\Users\dev\.cursor', InitiatingProcessFileName: node.exe, InitiatingProcessFolderPath: 'C:\Program Files\nodejs\node.exe', _expect_writer: runtime, _expect_target: config}
+  - id: catches/claude-temp-and-rename
+    kind: catches
+    quote: {source: rule, text: "Claude Code writes <name>.tmp.<pid>.<hex> and renames it onto the name, seen in a local strace capture of Claude Code 2.1.314 on Linux"}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {_note: "the temp row", FileName: settings.json.tmp.4242.a1b2c3d4e5f6, FolderPath: /home/dev/app/.claude/settings.json.tmp.4242.a1b2c3d4e5f6, InitiatingProcessFileName: 2.1.314, InitiatingProcessFolderPath: /home/dev/.local/share/claude/versions/2.1.314, InitiatingProcessCommandLine: claude, _expect_writer: agent, _expect_target: config}
+      - {_note: "the rename row", ActionType: FileRenamed, FileName: settings.json, FolderPath: /home/dev/app/.claude/settings.json, PreviousFileName: settings.json.tmp.4242.a1b2c3d4e5f6, PreviousFolderPath: /home/dev/app/.claude/, InitiatingProcessFileName: 2.1.314, InitiatingProcessFolderPath: /home/dev/.local/share/claude/versions/2.1.314, InitiatingProcessCommandLine: claude, _expect_writer: agent, _expect_target: config}
+  - id: catches/path-shapes
+    kind: catches
+    quote: {source: rule, text: "FolderPath is treated as maybe holding the file name, because Microsoft's description says folder and rows may differ."}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {_note: "a trailing separator on the folder", FileName: mcp.json, FolderPath: 'C:\Users\dev\.cursor\', InitiatingProcessFileName: node.exe, InitiatingProcessFolderPath: 'C:\Program Files\nodejs\node.exe', _expect_writer: runtime, _expect_target: config}
+      - {_note: "the shorter temp shape, read in shipped code", FileName: settings.json.tmp.abcd1234, FolderPath: /home/dev/app/.claude/settings.json.tmp.abcd1234, InitiatingProcessFileName: 2.1.314, InitiatingProcessFolderPath: /home/dev/.local/share/claude/versions/2.1.314, _expect_writer: agent, _expect_target: config}
+  - id: catches/cc-writes-folder
+    kind: catches
+    quote: {source: rule, text: "with its sandbox on, the temp file may sit in a .cc-writes folder (read in shipped code, not run)."}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {FileName: settings.json.tmp.4242.a1b2c3d4e5f6, FolderPath: /home/dev/app/.claude/.cc-writes/settings.json.tmp.4242.a1b2c3d4e5f6, InitiatingProcessFileName: 2.1.314, InitiatingProcessFolderPath: /home/dev/.local/share/claude/versions/2.1.314, _expect_writer: agent, _expect_target: config}
+  - id: catches/shell-rename-from-sed
+    kind: catches
+    quote: {source: rule, text: "DeviceFileEvents is the one sensor here that puts renames, changes and the writer's command line on one row"}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {ActionType: FileRenamed, FileName: settings.json, FolderPath: /home/dev/.gemini/settings.json, PreviousFileName: sedK3f9aQ, PreviousFolderPath: /home/dev/.gemini/, InitiatingProcessFileName: sed, InitiatingProcessFolderPath: /usr/bin/sed, InitiatingProcessCommandLine: "sed -i s/old/new/ /home/dev/.gemini/settings.json", _expect_writer: shell, _expect_target: config}
+      - {ActionType: FileModified, FileName: hooks.json, FolderPath: /home/dev/.codex/hooks.json, InitiatingProcessFileName: python3, InitiatingProcessFolderPath: /usr/bin/python3, _expect_writer: runtime, _expect_target: config}
+  - id: catches/hook-and-skill-folders
+    kind: catches
+    quote: {source: rule, text: "A file that decides what an AI coding agent runs or may do without asking was created, changed or renamed"}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {FileName: pre-tool.json, FolderPath: /home/dev/app/.github/hooks/pre-tool.json, InitiatingProcessFileName: bash, InitiatingProcessFolderPath: /usr/bin/bash, _expect_writer: shell, _expect_target: hook-or-skill-folder}
+      - {FileName: SKILL.md, FolderPath: /home/dev/.claude/skills/demo/SKILL.md, InitiatingProcessFileName: git, InitiatingProcessFolderPath: /usr/bin/git, _expect_writer: git-or-package-tool, _expect_target: hook-or-skill-folder}
+  - id: false-positive/editor-saves
+    kind: false-positive
+    quote: {source: rule, text: "every normal save of these files in an editor"}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {ActionType: FileModified, FileName: tasks.json, FolderPath: 'C:\Users\dev\app\.vscode\tasks.json', InitiatingProcessFileName: Code.exe, InitiatingProcessFolderPath: 'C:\Users\dev\AppData\Local\Programs\Microsoft VS Code\Code.exe', _expect_writer: editor, _expect_target: config}
+  - id: false-positive/claude-settings-local
+    kind: false-positive
+    quote: {source: rule, text: "Claude Code writing .claude/settings.local.json after a person approves a permission"}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {ActionType: FileRenamed, FileName: settings.local.json, FolderPath: /home/dev/app/.claude/settings.local.json, PreviousFileName: settings.local.json.tmp.4242.a1b2c3d4e5f6, InitiatingProcessFileName: 2.1.314, InitiatingProcessFolderPath: /home/dev/.local/share/claude/versions/2.1.314, _expect_writer: agent, _expect_target: config}
+  - id: false-positive/tool-updates
+    kind: false-positive
+    quote: {source: rule, text: "tool updates and first runs that write their own settings"}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {FileName: settings.json, FolderPath: /home/dev/.gemini/settings.json, InitiatingProcessFileName: node, InitiatingProcessFolderPath: /usr/bin/node, _expect_writer: runtime, _expect_target: config}
+  - id: false-positive/dotfile-sync
+    kind: false-positive
+    quote: {source: rule, text: "dotfile sync and backup restores"}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {FileName: settings.json, FolderPath: /home/dev/.claude/settings.json, InitiatingProcessFileName: rsync, InitiatingProcessFolderPath: /usr/bin/rsync, _expect_writer: other, _expect_target: config}
+  - id: false-positive/git-delivery
+    kind: false-positive
+    quote: {source: rule, text: "git writing these files on a clone, pull or checkout"}
+    expect: match
+    table: DeviceFileEvents
+    events:
+      - {FileName: settings.json, FolderPath: /home/dev/app/.claude/settings.json, InitiatingProcessFileName: git, InitiatingProcessFolderPath: /usr/bin/git, _expect_writer: git-or-package-tool, _expect_target: config}
+  - id: blind-spot/noisy-off-by-default
+    kind: blind-spot
+    quote: {source: rule, text: "Set IncludeNoisy to true to add .claude.json, which Claude Code rewrites on every run, .vscode/settings.json and *.code-workspace."}
+    expect: no-match
+    table: DeviceFileEvents
+    events:
+      - {FileName: .claude.json.tmp.4242.a1b2c3d4e5f6, FolderPath: /home/dev/.claude.json.tmp.4242.a1b2c3d4e5f6, InitiatingProcessFileName: 2.1.314, InitiatingProcessFolderPath: /home/dev/.local/share/claude/versions/2.1.314}
+      - {FileName: settings.json, FolderPath: /home/dev/app/.vscode/settings.json, InitiatingProcessFileName: Code, InitiatingProcessFolderPath: /usr/share/code/code}
+  - id: near-miss/similar-names
+    kind: near-miss
+    rationale: "Only the listed files and folders count, by the end of the folded path"
+    expect: no-match
+    table: DeviceFileEvents
+    events:
+      - {FileName: package.json, FolderPath: /home/dev/app/package.json, InitiatingProcessFileName: node, InitiatingProcessFolderPath: /usr/bin/node}
+      - {FileName: settings.json, FolderPath: /tmp/settings.json, InitiatingProcessFileName: node, InitiatingProcessFolderPath: /usr/bin/node}
+      - {FileName: settings.json.bak, FolderPath: /home/dev/app/.claude/settings.json.bak, InitiatingProcessFileName: cp, InitiatingProcessFolderPath: /usr/bin/cp}
