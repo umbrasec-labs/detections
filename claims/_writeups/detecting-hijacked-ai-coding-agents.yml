@@ -47,12 +47,27 @@ sentences:
   - starts: "Before you build on it, run this in your own tenant"
     disposition: context
     reason: "The splitter skips the inline query and joins this sentence to the next. The first half is advice with an ad hoc query that is not a pack file; the second half is validation status, and the Claims Ledger itself reports the all-agent-shells-risky-command claims as not-executed"
-  - starts: "None of the three detections has been run against a sensor capture on any OS"
+  - starts: "Its command rule does not see an agent's own Write or Edit tool, its new-file rule does not see Claude Code's normal writes"
+    disposition: context
+    reason: "Summarises two limits that the rules state and the claims prove: ai-agent-config-changed-by-command blind-spot/agent-own-write-tool and ai-agent-config-new-file blind-spot/claude-code-temp-then-rename; the hunt half is about KQL, which is not executed"
+  - starts: "In VS Code an agent's edit and a person's save look the same (inferred)."
     disposition: prerequisite
-    reason: "Needs a sensor capture; the one local capture is a strace trace of Claude Code 2.1.312 on Linux, whose sandbox rows the claims reproduce in redacted form, and synthetic events cannot settle real process names, process trees or recorded command-line forms"
-  - starts: "Both Sigma rules pass their claims on synthetic events built from the cited sources"
+    reason: "Read in VS Code source and inferred for a sensor; needs a Defender row of a Copilot edit, which synthetic events cannot settle"
+  - starts: "Reports disagree on whether the Mini Shai-Hulud family writes these files on the first host"
+    disposition: context
+    reason: "A statement about conflicting public reports, recorded in the design brief; no rule event can settle where the worm writes"
+  - starts: "Its write shapes come from local strace captures of Claude Code 2.1.314 and npm 12.2.0 on Linux"
+    disposition: context
+    reason: "A sourcing statement; the shapes are reproduced in the ai-agent-config-new-file and ai-agent-config-changed-by-command claims, whose headers say which events come from a capture"
+  - starts: "The KQL hunts have been parse-checked with the Kusto language service"
+    disposition: context
+    reason: "Validation status of the KQL files, which the harness reports as not-executed"
+  - starts: "None of the detections has been run against a sensor capture on any OS"
+    disposition: prerequisite
+    reason: "Needs a sensor capture; the local captures are strace traces of Claude Code on Linux (2.1.312 for the sandbox rows, 2.1.314 for config writes) and of an npm 12.2.0 install, and synthetic events cannot settle what a sensor records"
+  - starts: "The Sigma rules pass their claims on synthetic events built from the cited sources"
     disposition: context
     reason: "Restates what the Claims Ledger proves and does not prove, as the detections README says"
   - starts: "They are experimental: tune them against your own logs"
     disposition: context
-    reason: "Rule status and tuning advice; the false-positive notes it points to are proved for both Sigma rules; the KQL false positives are not executed"
+    reason: "Rule status and tuning advice; the false-positive notes it points to are proved for the Sigma rules; the KQL false positives are not executed"

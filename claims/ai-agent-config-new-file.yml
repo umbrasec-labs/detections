@@ -1,0 +1,132 @@
+schema: umbrasec.claims/v1
+rule: rules/cross-platform/ai-agent-config-new-file.yml
+rule_id: a84e5b17-92c6-4d03-8e2f-7b31c6d4f058
+rule_sha256: fe4398ea44689fa296ef5a3a2543b2deb79cc092fa3f84a6790dc57af54be7e9
+engine: sigma
+writeup: research/detecting-hijacked-ai-coding-agents.html
+reviewed: 2026-10-30
+# The file names come from a local strace capture on Linux (Claude Code 2.1.314, sed, cp,
+# node, python, shell forms). The Windows events, and any Sysmon fields, are assumed: no
+# event comes from a sensor capture.
+event_defaults:
+  _synthetic: true
+claims:
+  - id: catches/new-file-by-node
+    kind: catches
+    quote: {source: rule, text: "This rule sees a new file written straight to its final name, usually by node, bun, python or a shell redirect"}
+    expect: match
+    events:
+      - {_note: "node writeFileSync opens the final name with O_CREAT in the local capture", Image: /usr/bin/node, TargetFilename: /home/dev/app/.mcp.json}
+      - {_note: "python open w, same capture", Image: /usr/bin/python3, TargetFilename: /home/dev/.cursor/mcp.json}
+      - {_note: "shell redirect, same capture", Image: /usr/bin/bash, TargetFilename: /home/dev/app/.claude/settings.json}
+      - {_note: "Windows shape", Image: 'C:\Program Files\nodejs\node.exe', TargetFilename: 'C:\Users\dev\app\.claude\settings.local.json'}
+      - {_note: "the match folds ASCII case, which the Cursor path-form bypasses relied on", Image: 'C:\Program Files\nodejs\node.exe', TargetFilename: 'C:\Users\dev\app\.CURSOR\MCP.JSON'}
+  - id: catches/agent-that-writes-in-place
+    kind: catches
+    quote: {source: rule, text: "and by agents that write in place (Codex apply_patch and the Cursor CLI, read in shipped code)."}
+    expect: match
+    events:
+      - {Image: /usr/local/bin/codex, TargetFilename: /home/dev/app/.gemini/settings.json}
+      - {Image: /home/dev/.local/share/cursor-agent/versions/2026.10.22/node, TargetFilename: /home/dev/app/.claude/settings.json}
+  - id: catches/other-agents-paths
+    kind: catches
+    quote: {source: rule, text: "A process other than git created one of the files that decide what an AI coding agent runs or may do without asking."}
+    expect: match
+    events:
+      - {Image: /usr/bin/bun, TargetFilename: /home/dev/app/.vscode/tasks.json}
+      - {Image: /usr/bin/bun, TargetFilename: /home/dev/.codex/config.toml}
+      - {Image: /usr/bin/bun, TargetFilename: /home/dev/.kiro/settings/mcp.json}
+      - {Image: /usr/bin/bun, TargetFilename: /home/dev/.copilot/mcp-config.json}
+      - {Image: /usr/bin/bun, TargetFilename: /home/dev/.cline/data/settings/cline_mcp_settings.json}
+  - id: false-positive/first-time-setup
+    kind: false-positive
+    quote: {source: rule, text: "First-time setup by a person or an installer"}
+    expect: match
+    events:
+      - {Image: /usr/bin/bash, TargetFilename: /home/dev/app/.mcp.json}
+  - id: false-positive/scaffolder-or-archive
+    kind: false-positive
+    quote: {source: rule, text: "A project scaffolder, tar or unzip laying down a template that holds these files"}
+    expect: match
+    events:
+      - {Image: /usr/bin/tar, TargetFilename: /home/dev/new-app/.vscode/tasks.json}
+  - id: false-positive/dotfile-tools
+    kind: false-positive
+    quote: {source: rule, text: "Dotfile tools and backup restores"}
+    expect: match
+    events:
+      - {Image: /usr/bin/rsync, TargetFilename: /home/dev/.claude/settings.json}
+  - id: false-positive/asked-agent-writes-in-place
+    kind: false-positive
+    quote: {source: rule, text: "An agent that writes in place, such as Codex, making one of these files when asked"}
+    expect: match
+    events:
+      - {Image: /usr/local/bin/codex, TargetFilename: /home/dev/app/.mcp.json}
+  - id: false-positive/npm-installed-agent-first-run
+    kind: false-positive
+    quote: {source: rule, text: "An agent installed through npm running under node on a first run"}
+    expect: match
+    events:
+      - {Image: /usr/bin/node, TargetFilename: /home/dev/.gemini/settings.json}
+  - id: blind-spot/claude-code-temp-then-rename
+    kind: blind-spot
+    quote: {source: rule, text: "wrote <name>.tmp.<pid>.<hex> and renamed it onto the name, so a create event carries the temp name, not the final one."}
+    expect: no-match
+    events:
+      - {_note: "Write tool, local capture", Image: /home/dev/.local/share/claude/versions/2.1.314, TargetFilename: /home/dev/app/.claude/settings.json.tmp.4242.a1b2c3d4e5f6}
+      - {_note: "claude mcp add, local capture", Image: /home/dev/.local/share/claude/versions/2.1.314, TargetFilename: /home/dev/app/.mcp.json.tmp.4242.a1b2c3d4e5f6}
+  - id: blind-spot/sed-temp-name
+    kind: blind-spot
+    quote: {source: rule, text: "The same goes for sed -i, for Gemini CLI builds from 2026-09-30 on, and for mv, since Sysmon has no rename event."}
+    expect: no-match
+    events:
+      - {_note: "sed -i writes sedXXXXXX in the target folder, local capture", Image: /usr/bin/sed, TargetFilename: /home/dev/app/.claude/sedK3f9aQ}
+      - {_note: "Gemini write_file temp, read in shipped code", Image: /usr/bin/node, TargetFilename: /home/dev/app/.gemini/settings.json.8f14e45f-ceea-467f-a8d4-f8e3b1c2d3e4.tmp}
+  - id: blind-spot/git-delivered
+    kind: blind-spot
+    quote: {source: rule, text: "git is filtered, so a file that arrives in a clone or pull is not seen"}
+    expect: no-match
+    events:
+      - {Image: /usr/bin/git, TargetFilename: /home/dev/app/.claude/settings.json}
+      - {Image: 'C:\Program Files\Git\mingw64\bin\git.exe', TargetFilename: 'C:\Users\dev\app\.mcp.json'}
+  - id: blind-spot/ide-agent-under-editor-folders
+    kind: blind-spot
+    quote: {source: rule, text: "VS Code and Cursor are filtered for files under .vscode and .cursor, because a person makes those there, which also hides an IDE agent writing those paths."}
+    expect: no-match
+    events:
+      - {Image: 'C:\Users\dev\AppData\Local\Programs\Microsoft VS Code\Code.exe', TargetFilename: 'C:\Users\dev\app\.vscode\tasks.json'}
+      - {Image: /usr/share/cursor/cursor, TargetFilename: /home/dev/app/.cursor/mcp.json}
+      - {Image: 'C:\Users\dev\AppData\Local\Programs\Microsoft VS Code Insiders\Code - Insiders.exe', TargetFilename: 'C:\Users\dev\app\.vscode\tasks.json'}
+      - {Image: /usr/share/code-insiders/code-insiders, TargetFilename: /home/dev/app/.vscode/tasks.json}
+      - {Image: '/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper.app/Contents/MacOS/Code Helper', TargetFilename: /Users/dev/app/.vscode/mcp.json}
+  - id: blind-spot/noisy-files-left-to-the-hunt
+    kind: blind-spot
+    quote: {source: rule, text: "The noisy files .claude.json, .vscode/settings.json and *.code-workspace are left to the KQL hunt."}
+    expect: no-match
+    events:
+      - {Image: /usr/bin/node, TargetFilename: /home/dev/.claude.json}
+      - {Image: /usr/bin/node, TargetFilename: /home/dev/app/.vscode/settings.json}
+      - {Image: /usr/bin/node, TargetFilename: /home/dev/app/app.code-workspace}
+  - id: excluded/files-shipped-in-packages
+    kind: excluded
+    quote: {source: rule, text: "Files under node_modules are skipped because packages ship them."}
+    expect: no-match
+    events:
+      - {Image: /usr/bin/node, TargetFilename: /home/dev/app/node_modules/some-pkg/.mcp.json}
+      - {Image: 'C:\Program Files\nodejs\node.exe', TargetFilename: 'C:\Users\dev\app\node_modules\some-pkg\.claude\settings.json'}
+  - id: catches/editor-filter-holds-to-its-folders
+    kind: catches
+    quote: {source: rule, text: "VS Code and Cursor are filtered for files under .vscode and .cursor"}
+    expect: match
+    events:
+      - {Image: /usr/bin/code, TargetFilename: /home/dev/app/.mcp.json}
+      - {Image: /usr/bin/bash, TargetFilename: /home/dev/app/.vscode/tasks.json}
+  - id: near-miss/similar-names
+    kind: near-miss
+    rationale: "Only the listed files count, by the end of the path"
+    expect: no-match
+    events:
+      - {Image: /usr/bin/node, TargetFilename: /home/dev/app/package.json}
+      - {Image: /usr/bin/node, TargetFilename: /tmp/settings.json}
+      - {Image: /usr/bin/node, TargetFilename: /home/dev/app/.claude/settings.json.bak}
+      - {Image: /usr/bin/node, TargetFilename: /home/dev/app/config/mcp.json}
