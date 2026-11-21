@@ -113,4 +113,4 @@ A rule whose bytes changed since review is `stale`. Its claims still run, and an
 - The reverse holds too. An int can never equal a string value, so a no-match claim would pass for the wrong reason. The harness rejects an int on any field the rule does not compare to a number. YAML reads unquoted `0x17` as the int 23, so quote hex values.
 - SQLite column names ignore case. Two keys in one claim that differ only in case, or a key with a double quote, are a `schema` error.
 - A correlation query can return several rows, one per sliding window. A match means at least one row.
-- Locally, the verdicts were also checked under pySigma 2.0.1 with pySigma-backend-sqlite 2.1.1, and they agree.
+- The engine is pySigma 2.0.2 with pySigma-backend-sqlite 2.1.1 since 2026-11-21. Before the move, the record under the old pins (pySigma 1.5.1, backend 2.0.0) was compared with the new one, and only the engine versions differ.

@@ -99,7 +99,7 @@ docs/verify.md                outsider verification and reproduction
 
 `requirements.txt` pins the full dependency set with a hash for every file PyPI publishes. `python -m harness.lock` regenerates it and refuses a pin if any of its files was uploaded less than 14 days ago.
 
-A `# lock: exclude NAME - REASON` line in `requirements.in` leaves a dependency out of the lock. CI then never installs it. pySigma requires `diskcache`, which has an advisory with no patched release, but only pySigma's MITRE data cache uses it, and the harness never loads that cache. It is excluded, and self-test 14 blocks the import and runs the harness, so any code path that starts needing it fails CI.
+A `# lock: exclude NAME - REASON` line in `requirements.in` leaves a dependency out of the lock. CI then never installs it. pySigma requires `diskcache-community`, but only pySigma's MITRE data cache uses it, and the harness never loads that cache. It is excluded, and self-test 14 blocks the import (under both `diskcache_community` and the old `diskcache` name) and runs the harness, so any code path that starts needing it fails CI.
 
 A `# lock: allow-young NAME==VERSION sha256:HASH,... - REASON` line waives the cooldown for the listed files of that one exact pin, for a security fix that cannot wait 14 days. A file added to the release later is not covered and still has to clear the cooldown. The lock fails if the pin moves to another version, and again once the release is 14 days old, so the line has to be removed rather than lingering.
 

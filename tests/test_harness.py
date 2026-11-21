@@ -458,13 +458,14 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(first, second)
 
     def test_14_harness_never_imports_excluded_dependencies(self):
-        # requirements.in excludes diskcache from the lock, so CI never installs it. Block the
-        # import outright and run the harness: a code path that needs it must fail here first.
+        # requirements.in excludes diskcache-community from the lock, so CI never installs it.
+        # It imports as diskcache_community, not diskcache, so block both names outright and
+        # run the harness: a code path that needs either must fail here first.
         blocker = (
             "import sys, runpy\n"
             "class Block:\n"
             "    def find_spec(self, name, path=None, target=None):\n"
-            "        if name.split('.')[0] in ('diskcache',):\n"
+            "        if name.split('.')[0] in ('diskcache', 'diskcache_community'):\n"
             "            raise ImportError(f'{name} is excluded from requirements.txt')\n"
             "sys.meta_path.insert(0, Block())\n"
             "sys.argv = ['harness.run'] + sys.argv[1:]\n"
