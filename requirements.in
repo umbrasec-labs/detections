@@ -3,7 +3,7 @@
 # every pin must be at least 14 days old at lock time (the LiteLLM 1.107.0 lesson).
 # Moved from pySigma 1.5.1 + backend 2.0.0 on 2026-11-21. claims.json under both pin
 # sets agrees apart from the engine versions.
-pySigma==2.0.2
+pySigma==2.0.3
 pySigma-backend-sqlite==2.1.1
 PyYAML==6.0.3
 
